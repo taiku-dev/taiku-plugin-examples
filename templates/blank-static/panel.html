@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Blank Static</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 12px;
+        min-height: 100vh;
+        background: #18181b;
+        color: #d4d4d8;
+        font: 12px/1.5 system-ui, sans-serif;
+      }
+
+      h1 {
+        margin: 0 0 6px;
+        font-size: 14px;
+        color: #f4f4f5;
+      }
+
+      p {
+        margin: 0 0 10px;
+        color: #a1a1aa;
+      }
+
+      .card {
+        border: 1px solid #27272a;
+        border-radius: 8px;
+        background: #09090b;
+        padding: 10px;
+      }
+
+      button {
+        margin-top: 10px;
+        border: 1px solid #3f3f46;
+        background: #27272a;
+        color: #f4f4f5;
+        padding: 6px 10px;
+        border-radius: 6px;
+        font-size: 11px;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Blank Static</h1>
+    <p>Smallest useful starting point for a taiku panel plugin.</p>
+    <div class="card" id="status">Waiting for taiku…</div>
+    <button id="refresh" type="button">Refresh</button>
+    <script type="module" src="./panel.js"></script>
+  </body>
+</html>

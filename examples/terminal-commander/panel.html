@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #18181b;
+        color: #a1a1aa;
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: 12px;
+        padding: 8px;
+        overflow-y: auto;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .shell-row {
+        display: flex;
+        gap: 4px;
+        align-items: center;
+      }
+      .shell-select {
+        flex: 1;
+        background: #27272a;
+        border: 1px solid #3f3f46;
+        color: #d4d4d8;
+        font-size: 11px;
+        padding: 5px 8px;
+        border-radius: 4px;
+        outline: none;
+        cursor: pointer;
+        appearance: none;
+        -webkit-appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 8px center;
+      }
+      .shell-select:focus {
+        border-color: #6366f1;
+      }
+      .btn-adopt {
+        border: 1px solid #854d0e;
+        background: transparent;
+        color: #eab308;
+        padding: 4px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 10px;
+        font-weight: 500;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+      .btn-adopt:hover {
+        background: #854d0e33;
+      }
+      .btn-adopt:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .btn-adopt.hidden {
+        display: none;
+      }
+      .ownership-tag {
+        font-size: 9px;
+        padding: 2px 5px;
+        border-radius: 3px;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+      .ownership-tag.mine {
+        color: #4ade80;
+        background: #16a34a22;
+        border: 1px solid #16a34a44;
+      }
+      .ownership-tag.remote {
+        color: #f59e0b;
+        background: #d9770622;
+        border: 1px solid #d9770644;
+      }
+      .ownership-tag.unowned {
+        color: #71717a;
+        background: #3f3f4622;
+        border: 1px solid #3f3f46;
+      }
+      .ownership-tag.hidden {
+        display: none;
+      }
+      .cmd-row {
+        display: flex;
+        gap: 4px;
+      }
+      .cmd-input {
+        flex: 1;
+        background: #18181b;
+        border: 1px solid #3f3f46;
+        color: #e4e4e7;
+        font-family: ui-monospace, monospace;
+        font-size: 12px;
+        padding: 5px 8px;
+        border-radius: 4px;
+        outline: none;
+        min-width: 0;
+      }
+      .cmd-input:focus {
+        border-color: #6366f1;
+      }
+      .cmd-input::placeholder {
+        color: #52525b;
+      }
+      .btn {
+        border: none;
+        padding: 5px 10px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 11px;
+        font-weight: 500;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+      .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .btn-primary {
+        background: #4f46e5;
+        color: white;
+      }
+      .btn-primary:hover {
+        background: #4338ca;
+      }
+      .output-box {
+        flex: 1;
+        background: #09090b;
+        border: 1px solid #27272a;
+        border-radius: 4px;
+        padding: 6px;
+        font-family: ui-monospace, monospace;
+        font-size: 11px;
+        color: #d4d4d8;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        word-break: break-all;
+        min-height: 60px;
+      }
+      .output-empty {
+        color: #52525b;
+        font-style: italic;
+      }
+      .hint {
+        color: #52525b;
+        font-size: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell-row">
+      <select class="shell-select" id="shells">
+        <option disabled selected>Loading shells...</option>
+      </select>
+      <span class="ownership-tag hidden" id="ownership"></span>
+      <button class="btn-adopt hidden" id="adopt">Adopt</button>
+    </div>
+
+    <div class="cmd-row">
+      <input
+        class="cmd-input"
+        id="cmd"
+        placeholder="command..."
+        autocorrect="off"
+        autocapitalize="off"
+        spellcheck="false"
+        autocomplete="off"
+      />
+      <button class="btn btn-primary" id="run">Send</button>
+    </div>
+
+    <div class="output-box" id="output">
+      <span class="output-empty">No output yet.</span>
+    </div>
+
+    <span class="hint">Sends keystrokes to the selected terminal.</span>
+
+    <script>
+      let pluginId = "",
+        reqId = 0,
+        sendingCmd = false;
+      let ownership = null; // { owned, remote, unowned }
+      let userRole = null; // { role, userId }
+
+      const shellsEl = document.getElementById("shells");
+      const cmdEl = document.getElementById("cmd");
+      const outputEl = document.getElementById("output");
+      const adoptEl = document.getElementById("adopt");
+      const ownershipEl = document.getElementById("ownership");
+
+      function send(method, params) {
+        const id = "tc_" + ++reqId;
+        window.parent.postMessage(
+          { type: "taiku:request", id, pluginId, method, params },
+          "*",
+        );
+        return id;
+      }
+
+      function sendAsync(method, params) {
+        return new Promise((resolve, reject) => {
+          const id = send(method, params);
+          const handler = (e) => {
+            const d = e.data;
+            if (d?.type === "taiku:response" && d.id === id) {
+              window.removeEventListener("message", handler);
+              if (d.error) reject(new Error(d.error));
+              else resolve(d.result);
+            }
+          };
+          window.addEventListener("message", handler);
+          setTimeout(() => {
+            window.removeEventListener("message", handler);
+            reject(new Error("Timeout"));
+          }, 10000);
+        });
+      }
+
+      function getActiveShell() {
+        const v = shellsEl.value;
+        return v ? parseInt(v) : null;
+      }
+
+      function updateOwnershipUI() {
+        const shell = getActiveShell();
+        if (shell === null || !ownership || !userRole) {
+          adoptEl.classList.add("hidden");
+          ownershipEl.classList.add("hidden");
+          return;
+        }
+
+        const isOwned = ownership.owned.includes(shell);
+        const remoteEntry = ownership.remote.find((r) => r.shellId === shell);
+        const isUnowned = ownership.unowned.includes(shell);
+        const isAdmin = userRole.role === "admin";
+        const isReader = userRole.role === "reader";
+
+        // Show ownership tag
+        ownershipEl.classList.remove("hidden", "mine", "remote", "unowned");
+        if (isOwned) {
+          ownershipEl.textContent = "mine";
+          ownershipEl.classList.add("mine");
+        } else if (remoteEntry) {
+          ownershipEl.textContent = remoteEntry.userName || "other's";
+          ownershipEl.classList.add("remote");
+        } else if (isUnowned) {
+          ownershipEl.textContent = "unowned";
+          ownershipEl.classList.add("unowned");
+        } else {
+          ownershipEl.classList.add("hidden");
+        }
+
+        // Show adopt button for non-owned shells (admin can always adopt, writer can adopt unowned or request)
+        if (!isOwned && !isReader) {
+          adoptEl.classList.remove("hidden");
+          if (isAdmin) {
+            adoptEl.textContent = "Adopt";
+          } else if (remoteEntry) {
+            adoptEl.textContent = "Request";
+          } else {
+            adoptEl.textContent = "Adopt";
+          }
+        } else {
+          adoptEl.classList.add("hidden");
+        }
+      }
+
+      async function refreshOwnership() {
+        try {
+          ownership = await sendAsync("getShellOwnership");
+        } catch {
+          ownership = null;
+        }
+        try {
+          userRole = await sendAsync("getUserRole");
+        } catch {
+          userRole = null;
+        }
+        updateOwnershipUI();
+        // Disable send for readers.
+        const isReader = userRole?.role === "reader";
+        document.getElementById("run").disabled = isReader;
+        document.getElementById("cmd").disabled = isReader;
+        if (isReader) {
+          document.getElementById("cmd").placeholder = "read-only";
+        }
+      }
+
+      async function refreshShells() {
+        const prev = getActiveShell();
+        try {
+          const shells = await sendAsync("getShells");
+          let names = null;
+          try {
+            names = await sendAsync("getTerminalNames");
+          } catch {}
+
+          shellsEl.innerHTML = "";
+          if (!shells.length) {
+            shellsEl.innerHTML =
+              "<option disabled selected>No shells available</option>";
+            return;
+          }
+          // Build labels, disambiguating duplicates with (#id)
+          const labels = shells.map((s) => {
+            const info = names?.find((n) => n.shellId === s.id);
+            return info?.customName || info?.name || `Shell #${s.id}`;
+          });
+          const labelCounts = {};
+          labels.forEach((l) => (labelCounts[l] = (labelCounts[l] || 0) + 1));
+
+          shells.forEach((s, i) => {
+            const base = labels[i];
+            const label = labelCounts[base] > 1 ? `${base} (#${s.id})` : base;
+            const opt = document.createElement("option");
+            opt.value = s.id;
+            opt.textContent = label;
+            shellsEl.appendChild(opt);
+          });
+          // Restore previous selection or default to first
+          if (prev !== null && shells.some((s) => s.id === prev)) {
+            shellsEl.value = prev;
+          } else {
+            shellsEl.value = shells[0].id;
+          }
+          await refreshOwnership();
+          readOutput();
+        } catch (err) {
+          shellsEl.innerHTML = `<option disabled selected>Error: ${err.message}</option>`;
+        }
+      }
+
+      async function readOutput() {
+        const shell = getActiveShell();
+        if (shell === null) return;
+        try {
+          const output = await sendAsync("getShellOutput", {
+            shellId: shell,
+            chunks: 2,
+          });
+          const text = output.chunks.join("");
+          if (text.trim()) {
+            outputEl.textContent = text
+              .replace(
+                /\x1b(?:\[[0-9;]*[a-zA-Z]|\][^\x07\x1b]*(?:\x07|\x1b\\)?|\([A-Z0-9])/g,
+                "",
+              )
+              .replace(/[\x00-\x08\x0e-\x1f]/g, "")
+              .slice(-2000);
+            outputEl.scrollTop = outputEl.scrollHeight;
+          } else {
+            outputEl.innerHTML = '<span class="output-empty">No output</span>';
+          }
+        } catch (err) {
+          outputEl.textContent = "Error: " + err.message;
+        }
+      }
+
+      // Auto-read output and update ownership when switching shells
+      shellsEl.addEventListener("change", () => {
+        updateOwnershipUI();
+        readOutput();
+      });
+
+      adoptEl.addEventListener("click", async () => {
+        const shell = getActiveShell();
+        if (shell === null) return;
+        adoptEl.disabled = true;
+        try {
+          const result = await sendAsync("adoptShell", { shellId: shell });
+          if (result.status === "adopted") {
+            send("showToast", { message: "Shell adopted", kind: "success" });
+          } else if (result.status === "requested") {
+            send("showToast", {
+              message: "Adoption requested",
+              kind: "info",
+            });
+          } else {
+            send("showToast", {
+              message: result.message || "Failed",
+              kind: "error",
+            });
+          }
+          await refreshOwnership();
+        } catch (err) {
+          send("showToast", {
+            message: "Adopt failed: " + err.message,
+            kind: "error",
+          });
+        } finally {
+          adoptEl.disabled = false;
+        }
+      });
+
+      document.getElementById("run").addEventListener("click", async () => {
+        if (sendingCmd) return;
+        const shell = getActiveShell();
+        if (shell === null) {
+          send("showToast", { message: "Select a shell first", kind: "error" });
+          return;
+        }
+        const cmd = cmdEl.value.trim();
+        if (!cmd) return;
+        sendingCmd = true;
+        try {
+          await sendAsync("writeToShell", {
+            shellId: shell,
+            data: cmd + "\n",
+          });
+          // Auto-read output after a short delay for command to execute
+          setTimeout(() => readOutput(), 500);
+        } catch (err) {
+          send("showToast", {
+            message: "Failed: " + err.message,
+            kind: "error",
+          });
+        } finally {
+          sendingCmd = false;
+        }
+      });
+
+      cmdEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          document.getElementById("run").click();
+        }
+      });
+
+      window.addEventListener("message", (e) => {
+        const d = e.data;
+        if (!d) return;
+        if (d.type === "taiku:init") {
+          pluginId = d.pluginId;
+          send("subscribeEvents");
+          refreshShells();
+          return;
+        }
+        if (d.type === "taiku:event") {
+          const t = d.event.type;
+          if (t === "shells_changed" || t === "terminal_title_changed") {
+            refreshShells();
+          }
+        }
+      });
+    </script>
+  </body>
+</html>

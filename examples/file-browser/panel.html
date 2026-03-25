@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #18181b;
+        color: #a1a1aa;
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: 12px;
+        padding: 8px;
+        overflow-y: auto;
+        height: 100vh;
+      }
+      .path-bar {
+        display: flex;
+        gap: 4px;
+        align-items: center;
+        margin-bottom: 8px;
+        padding: 4px 6px;
+        background: #27272a;
+        border-radius: 4px;
+        font-size: 11px;
+        font-family: ui-monospace, monospace;
+        color: #a1a1aa;
+        overflow-x: auto;
+        white-space: nowrap;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+      .path-bar::-webkit-scrollbar {
+        display: none;
+      }
+      .path-bar button {
+        background: none;
+        border: none;
+        color: #60a5fa;
+        cursor: pointer;
+        font-size: 11px;
+        font-family: inherit;
+        padding: 0;
+      }
+      .path-bar button:hover {
+        text-decoration: underline;
+      }
+      .file-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+      }
+      .file-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 6px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 11px;
+      }
+      .file-row:hover {
+        background: #27272a;
+      }
+      .file-icon {
+        width: 14px;
+        text-align: center;
+        flex-shrink: 0;
+      }
+      .file-name {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: #d4d4d8;
+      }
+      .dir .file-name {
+        color: #60a5fa;
+      }
+      .empty {
+        color: #52525b;
+        text-align: center;
+        padding: 24px 0;
+        font-size: 11px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="path-bar" id="path-bar">.</div>
+    <div class="file-list" id="file-list">
+      <p class="empty">Loading...</p>
+    </div>
+    <script>
+      let pluginId = "",
+        reqId = 0,
+        currentPath = ".";
+
+      /** Normalize a path: resolve `.`, `..`, collapse `//`, return `.` for root. */
+      function normalizePath(p) {
+        const parts = p.split("/").filter(Boolean);
+        const resolved = [];
+        for (const seg of parts) {
+          if (seg === ".") continue;
+          if (seg === "..") {
+            resolved.pop(); // go up — if empty, stays empty (root)
+          } else {
+            resolved.push(seg);
+          }
+        }
+        return resolved.length === 0 ? "." : resolved.join("/");
+      }
+
+      function send(method, params) {
+        const id = "fb_" + ++reqId;
+        window.parent.postMessage(
+          { type: "taiku:request", id, pluginId, method, params },
+          "*",
+        );
+        return id;
+      }
+
+      function sendAsync(method, params) {
+        return new Promise((resolve, reject) => {
+          const id = send(method, params);
+          const handler = (e) => {
+            const d = e.data;
+            if (d?.type === "taiku:response" && d.id === id) {
+              window.removeEventListener("message", handler);
+              if (d.error) reject(new Error(d.error));
+              else resolve(d.result);
+            }
+          };
+          window.addEventListener("message", handler);
+          setTimeout(() => {
+            window.removeEventListener("message", handler);
+            reject(new Error("Timeout"));
+          }, 10000);
+        });
+      }
+
+      async function listDir(rawPath) {
+        const path = normalizePath(rawPath);
+        currentPath = path;
+        const pathBar = document.getElementById("path-bar");
+
+        // Build clickable breadcrumbs: ~ / foo / bar / baz
+        let breadcrumb = `<button data-nav="." title="Session root">~</button>`;
+        if (path !== ".") {
+          const segments = path.split("/");
+          segments.forEach((seg, i) => {
+            const partial = segments.slice(0, i + 1).join("/");
+            breadcrumb += ` / <button data-nav="${partial}">${seg}</button>`;
+          });
+        }
+        pathBar.innerHTML = breadcrumb;
+
+        const fileList = document.getElementById("file-list");
+        fileList.innerHTML = '<p class="empty">Loading...</p>';
+
+        try {
+          const entries = await sendAsync("listDir", { path });
+
+          // Parent: go up one level, or stay at root
+          const parentPath = path === "." ? "." : normalizePath(path + "/..");
+          let html = "";
+          if (path !== ".") {
+            html += `<div class="file-row dir" data-name=".." data-dir="true" data-path="${parentPath}">
+        <span class="file-icon">&#128194;</span><span class="file-name">..</span></div>`;
+          }
+
+          if (entries && entries.length) {
+            entries.sort((a, b) => {
+              if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+              return a.name.localeCompare(b.name);
+            });
+            html += entries
+              .map((e) => {
+                const fp = path === "." ? e.name : path + "/" + e.name;
+                return `<div class="file-row ${
+                  e.isDir ? "dir" : ""
+                }" data-name="${e.name}" data-dir="${
+                  e.isDir
+                }" data-path="${fp}">
+        <span class="file-icon">${
+          e.isDir ? "&#128193;" : "&#128196;"
+        }</span><span class="file-name">${e.name}</span></div>`;
+              })
+              .join("");
+          } else {
+            html +=
+              '<p class="empty" style="padding:12px 0">Empty directory</p>';
+          }
+          fileList.innerHTML = html;
+        } catch (err) {
+          const parentPath = path === "." ? "." : normalizePath(path + "/..");
+          let html = "";
+          if (path !== ".") {
+            html += `<div class="file-row dir" data-name=".." data-dir="true" data-path="${parentPath}">
+        <span class="file-icon">&#128194;</span><span class="file-name">..</span></div>`;
+          }
+          html += `<p class="empty" style="color:#f87171">${err.message}</p>`;
+          fileList.innerHTML = html;
+        }
+      }
+
+      // Breadcrumb navigation in path bar
+      document.getElementById("path-bar").addEventListener("click", (e) => {
+        const nav = e.target.dataset?.nav;
+        if (nav !== undefined) listDir(nav);
+      });
+
+      document.getElementById("file-list").addEventListener("click", (e) => {
+        const row = e.target.closest(".file-row");
+        if (!row) return;
+        if (row.dataset.dir === "true") {
+          listDir(row.dataset.path);
+        } else {
+          send("openFile", { path: row.dataset.path });
+          send("showToast", {
+            message: "Opening " + row.dataset.name,
+            kind: "info",
+            duration: 2000,
+          });
+        }
+      });
+
+      window.addEventListener("message", (e) => {
+        const d = e.data;
+        if (!d) return;
+        if (d.type === "taiku:init") {
+          pluginId = d.pluginId;
+          listDir(".");
+        }
+      });
+    </script>
+  </body>
+</html>
