@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <style>
+      body {
+        margin: 0;
+        background: #18181b;
+        color: #a1a1aa;
+        font-family: system-ui;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <p>Chat Notifier is active (no panel needed)</p>
+    <script>
+      let pluginId = "",
+        reqId = 0;
+      function call(method, params) {
+        const id = "cn_" + ++reqId;
+        window.parent.postMessage(
+          { type: "taiku:request", id, pluginId, method, params },
+          "*",
+        );
+      }
+      window.addEventListener("message", (e) => {
+        const d = e.data;
+        if (!d) return;
+        if (d.type === "taiku:init") {
+          pluginId = d.pluginId;
+          return;
+        }
+        if (d.type !== "taiku:event") return;
+        const ev = d.event;
+        if (ev.type === "chat") {
+          // Skip own messages.
+          if (ev.data.mine) return;
+          const who = ev.data.userName || "Someone";
+          const msg = ev.data.message || "";
+          if (document.hidden) {
+            call("sendNotification", {
+              title: "taiku chat",
+              body: who + ": " + msg,
+              tag: "taiku-chat",
+            });
+            call("playSound", { sound: "chime" });
+          }
+          call("showToast", {
+            message: who + ": " + msg,
+            kind: "info",
+            duration: 4000,
+          });
+        }
+      });
+    </script>
+  </body>
+</html>

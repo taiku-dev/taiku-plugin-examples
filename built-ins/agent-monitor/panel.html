@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #18181b;
+        color: #a1a1aa;
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: 12px;
+        padding: 0;
+        overflow-y: auto;
+        height: 100vh;
+      }
+      .summary {
+        display: flex;
+        gap: 0;
+        padding: 6px 10px;
+        font-size: 11px;
+        border-bottom: 1px solid #27272a;
+        background: #18181b;
+        position: sticky;
+        top: 0;
+        z-index: 2;
+      }
+      .summary-item {
+        display: flex;
+        align-items: baseline;
+        gap: 4px;
+        padding-right: 12px;
+      }
+      .summary-item .n {
+        color: #e4e4e7;
+        font-weight: 600;
+        font-size: 13px;
+      }
+      .summary-item .label {
+        color: #52525b;
+        font-size: 10px;
+      }
+      .cards {
+        padding: 4px 0;
+      }
+      .agent-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 10px;
+        cursor: pointer;
+      }
+      .agent-row:hover {
+        background: #27272a;
+      }
+      .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+      .dot.running {
+        background: #22c55e;
+      }
+      .dot.waiting {
+        background: #eab308;
+      }
+      .dot.thinking {
+        background: #38bdf8;
+      }
+      .dot.tool_use {
+        background: #fb923c;
+      }
+      .dot.idle {
+        background: #60a5fa;
+      }
+      .dot.done,
+      .dot.stopped {
+        background: #71717a;
+      }
+      .agent-info {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+      }
+      .agent-type {
+        color: #e4e4e7;
+        font-weight: 600;
+        font-size: 12px;
+        flex-shrink: 0;
+      }
+      .agent-status {
+        color: #71717a;
+        font-size: 11px;
+      }
+      .agent-time {
+        color: #52525b;
+        font-size: 10px;
+        flex-shrink: 0;
+        font-variant-numeric: tabular-nums;
+      }
+      .agent-cost {
+        color: #4ade80;
+        font-size: 10px;
+        font-family: ui-monospace, monospace;
+        flex-shrink: 0;
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* Floating tooltip — lives outside the row flow */
+      #tooltip {
+        position: fixed;
+        display: none;
+        background: #27272a;
+        border: 1px solid #3f3f46;
+        border-radius: 6px;
+        padding: 8px 10px;
+        z-index: 100;
+        min-width: 180px;
+        max-width: 240px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        font-size: 10px;
+        color: #a1a1aa;
+        pointer-events: none;
+      }
+      .tt-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 1px 0;
+      }
+      .tt-label {
+        color: #52525b;
+      }
+      .tt-val {
+        color: #d4d4d8;
+        font-family: ui-monospace, monospace;
+      }
+      .tt-val.model {
+        color: #60a5fa;
+      }
+      .tt-val.cost {
+        color: #4ade80;
+      }
+      .tt-sep {
+        border-top: 1px solid #3f3f46;
+        margin: 3px 0;
+      }
+
+      .empty {
+        color: #52525b;
+        text-align: center;
+        padding: 32px 0;
+        font-size: 11px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="summary">
+      <div class="summary-item">
+        <span class="n" id="active-count">0</span>
+        <span class="label">active</span>
+      </div>
+      <div class="summary-item">
+        <span class="n" id="total-count">0</span>
+        <span class="label">total</span>
+      </div>
+      <div class="summary-item" id="cost-item" style="display: none">
+        <span class="n" id="total-cost" style="color: #4ade80">$0</span>
+        <span class="label">session</span>
+      </div>
+      <div class="summary-item" id="alltime-item" style="display: none">
+        <span class="n" id="alltime-cost" style="color: #22c55e">$0</span>
+        <span class="label">all-time</span>
+      </div>
+    </div>
+    <div class="cards" id="cards"></div>
+    <p id="empty" class="empty">No agent activity yet</p>
+    <div id="tooltip"></div>
+    <script>
+      const cardsEl = document.getElementById("cards"),
+        empty = document.getElementById("empty");
+      const activeCountEl = document.getElementById("active-count");
+      const totalCountEl = document.getElementById("total-count");
+      const totalCostEl = document.getElementById("total-cost");
+      const costItem = document.getElementById("cost-item");
+      const tooltipEl = document.getElementById("tooltip");
+      const alltimeCostEl = document.getElementById("alltime-cost");
+      const alltimeItem = document.getElementById("alltime-item");
+      const agents = new Map();
+      const tooltipData = new Map();
+      let pluginId = "",
+        panelId = "",
+        reqId = 0;
+      let alltimeCost = 0; // cumulative cost across all sessions
+      let lastPersistedCost = 0; // last value saved to user KV
+      let lastSessionCost = 0; // track session cost delta for cumulative update
+
+      function send(method, params) {
+        if (!pluginId) return Promise.resolve(null);
+        return new Promise((resolve) => {
+          const id = "am_" + ++reqId;
+          window.parent.postMessage(
+            { type: "taiku:request", id, pluginId, method, params },
+            "*",
+          );
+          const handler = (e) => {
+            const d = e.data;
+            if (d?.type === "taiku:response" && d.id === id) {
+              window.removeEventListener("message", handler);
+              resolve(d.error ? null : d.result);
+            }
+          };
+          window.addEventListener("message", handler);
+          setTimeout(() => {
+            window.removeEventListener("message", handler);
+            resolve(null);
+          }, 5000);
+        });
+      }
+
+      async function loadAlltimeCost() {
+        const val = await send("getUserData", { key: "cumulative_cost" });
+        if (val && typeof val === "object" && typeof val.cost === "number") {
+          alltimeCost = val.cost;
+          lastPersistedCost = alltimeCost;
+        }
+        renderAlltimeCost();
+      }
+
+      function persistAlltimeCost() {
+        if (alltimeCost !== lastPersistedCost) {
+          lastPersistedCost = alltimeCost;
+          send("setUserData", {
+            key: "cumulative_cost",
+            value: { cost: alltimeCost, updatedAt: Date.now() },
+          });
+        }
+      }
+
+      function renderAlltimeCost() {
+        if (alltimeCost > 0) {
+          alltimeCostEl.textContent = fmtCost(alltimeCost);
+          alltimeItem.style.display = "";
+        } else {
+          alltimeItem.style.display = "none";
+        }
+      }
+
+      function fmtTok(n) {
+        if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+        if (n >= 1_000) return (n / 1_000).toFixed(1) + "k";
+        return String(n);
+      }
+
+      function fmtCost(c) {
+        if (c <= 0) return "";
+        if (c < 0.01) return "$" + c.toFixed(4);
+        if (c < 1) return "$" + c.toFixed(3);
+        return "$" + c.toFixed(2);
+      }
+
+      function fmtTime(ts) {
+        const ago = Math.round((Date.now() - (ts || Date.now())) / 1000);
+        if (ago < 60) return ago + "s";
+        if (ago < 3600) return Math.round(ago / 60) + "m";
+        return Math.round(ago / 3600) + "h";
+      }
+
+      function shortModel(m) {
+        if (!m) return "";
+        return m
+          .replace("claude-", "")
+          .replace("gpt-", "")
+          .replace(/-\d{8}$/, "");
+      }
+
+      function isActive(s) {
+        return (
+          s === "running" ||
+          s === "waiting" ||
+          s === "thinking" ||
+          s === "tool_use"
+        );
+      }
+
+      function esc(s) {
+        return String(s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+
+      function buildTooltipHtml(a) {
+        let tt = "";
+        const shellLabel = a.instanceId
+          ? `#${a.shell} · ${a.instanceId}`
+          : `#${a.shell}`;
+        tt += `<div class="tt-row"><span class="tt-label">Shell</span><span class="tt-val">${esc(
+          shellLabel,
+        )}</span></div>`;
+        if (a.sessionId) {
+          tt += `<div class="tt-row"><span class="tt-label">Session</span><span class="tt-val">${esc(
+            a.sessionId.slice(0, 8),
+          )}</span></div>`;
+        }
+        if (a.model) {
+          tt += `<div class="tt-row"><span class="tt-label">Model</span><span class="tt-val model">${esc(
+            shortModel(a.model),
+          )}</span></div>`;
+        }
+        if (a.eventCount > 0) {
+          tt += `<div class="tt-row"><span class="tt-label">Events</span><span class="tt-val">${a.eventCount}</span></div>`;
+        }
+        if (
+          a.tokenUsage &&
+          (a.tokenUsage.input > 0 || a.tokenUsage.output > 0)
+        ) {
+          tt += `<div class="tt-sep"></div>`;
+          tt += `<div class="tt-row"><span class="tt-label">Input</span><span class="tt-val">${fmtTok(
+            a.tokenUsage.input,
+          )}</span></div>`;
+          tt += `<div class="tt-row"><span class="tt-label">Output</span><span class="tt-val">${fmtTok(
+            a.tokenUsage.output,
+          )}</span></div>`;
+          if (a.tokenUsage.cached > 0) {
+            tt += `<div class="tt-row"><span class="tt-label">Cached</span><span class="tt-val">${fmtTok(
+              a.tokenUsage.cached,
+            )}</span></div>`;
+          }
+          if (a.tokenUsage.cost > 0) {
+            tt += `<div class="tt-row"><span class="tt-label">Cost</span><span class="tt-val cost">${fmtCost(
+              a.tokenUsage.cost,
+            )}</span></div>`;
+          }
+        }
+        return tt;
+      }
+
+      function render() {
+        const active = [...agents.values()].filter((a) => isActive(a.status));
+        activeCountEl.textContent = active.length;
+        totalCountEl.textContent = agents.size;
+
+        let sessionCost = 0;
+        for (const a of agents.values()) {
+          if (a.tokenUsage?.cost) sessionCost += a.tokenUsage.cost;
+        }
+        if (sessionCost > 0) {
+          totalCostEl.textContent = fmtCost(sessionCost);
+          costItem.style.display = "";
+        } else {
+          costItem.style.display = "none";
+        }
+        // Update cumulative all-time cost.
+        const delta = sessionCost - lastSessionCost;
+        if (delta > 0) {
+          alltimeCost += delta;
+          renderAlltimeCost();
+        }
+        lastSessionCost = sessionCost;
+
+        send("setBadge", { actionId: "open-agents", count: active.length });
+
+        if (agents.size === 0) {
+          cardsEl.innerHTML = "";
+          empty.style.display = "";
+          tooltipData.clear();
+          return;
+        }
+        empty.style.display = "none";
+
+        tooltipData.clear();
+        let html = "";
+        for (const [k, a] of [...agents.entries()].sort(
+          (x, y) => (y[1].ts || 0) - (x[1].ts || 0),
+        )) {
+          const cls = a.status || "done";
+          const cost = a.tokenUsage?.cost > 0 ? fmtCost(a.tokenUsage.cost) : "";
+          tooltipData.set(k, buildTooltipHtml(a));
+
+          html += `<div class="agent-row" data-key="${esc(k)}" data-shell="${
+            a.shell
+          }" data-instance="${a.instanceId || ""}">
+            <span class="dot ${cls}"></span>
+            <div class="agent-info">
+              <span class="agent-type">${esc(a.agent || "unknown")}</span>
+              <span class="agent-status">${esc(a.status)}</span>
+            </div>
+            ${cost ? `<span class="agent-cost">${cost}</span>` : ""}
+            <span class="agent-time">${fmtTime(a.ts)}</span>
+          </div>`;
+        }
+        cardsEl.innerHTML = html;
+        if (panelId) {
+          requestAnimationFrame(() =>
+            send("resizePanel", { panelId, height: "fit" }),
+          );
+        }
+      }
+      setInterval(render, 5000);
+
+      // Tooltip: show/hide via mouseenter/mouseleave on rows, positioned via JS.
+      cardsEl.addEventListener(
+        "mouseenter",
+        (e) => {
+          const row = e.target.closest(".agent-row");
+          if (!row) return;
+          const key = row.dataset.key;
+          const html = tooltipData.get(key);
+          if (!html) return;
+          tooltipEl.innerHTML = html;
+          tooltipEl.style.display = "block";
+          // Position below the row, right-aligned
+          const rect = row.getBoundingClientRect();
+          tooltipEl.style.top = rect.bottom + 2 + "px";
+          tooltipEl.style.right = "8px";
+          tooltipEl.style.left = "auto";
+        },
+        true,
+      );
+
+      cardsEl.addEventListener(
+        "mouseleave",
+        (e) => {
+          const row = e.target.closest(".agent-row");
+          if (!row) return;
+          // Only hide if we're actually leaving the row (not entering a child)
+          if (row.contains(e.relatedTarget)) return;
+          tooltipEl.style.display = "none";
+        },
+        true,
+      );
+
+      // Also hide tooltip when mouse leaves the cards container entirely
+      cardsEl.addEventListener("mouseleave", () => {
+        tooltipEl.style.display = "none";
+      });
+
+      // Click to open agent session overlay
+      cardsEl.addEventListener("click", (e) => {
+        const row = e.target.closest(".agent-row");
+        if (!row) return;
+        tooltipEl.style.display = "none";
+        const shellId = Number(row.dataset.shell);
+        const instanceId = row.dataset.instance || undefined;
+        send("openAgentOverlay", { shellId, instanceId });
+      });
+
+      window.addEventListener("message", (e) => {
+        const d = e.data;
+        if (!d) return;
+        if (d.type === "taiku:init") {
+          pluginId = d.pluginId;
+          panelId = d.panelId;
+          send("subscribeEvents");
+          loadAlltimeCost();
+          // Persist cumulative cost every 30s.
+          setInterval(persistAlltimeCost, 30000);
+          return;
+        }
+        if (d.type !== "taiku:event") return;
+        const ev = d.event;
+        if (ev.type === "agent_status" && ev.data && ev.data.shellId != null) {
+          const shellId = Number(ev.data.shellId);
+          const instanceId = ev.data.instanceId
+            ? String(ev.data.instanceId)
+            : "";
+          const sessionId = ev.data.sessionId ? String(ev.data.sessionId) : "";
+          const key = `${shellId}:${
+            instanceId || sessionId || ev.data.agentType || "agent"
+          }`;
+          if (ev.data.status === "stopped") {
+            agents.delete(key);
+          } else {
+            const existing = agents.get(key);
+            agents.set(key, {
+              shell: shellId,
+              instanceId: instanceId || null,
+              sessionId: sessionId || null,
+              agent: ev.data.agentType || "",
+              status: ev.data.status || "running",
+              ts: ev.timestamp || Date.now(),
+              model: ev.data.model || existing?.model || null,
+              tokenUsage: ev.data.tokenUsage || existing?.tokenUsage || null,
+              eventCount: ev.data.eventCount || existing?.eventCount || 0,
+            });
+          }
+        }
+        if (ev.type === "shells_changed") {
+          const ids = ev.data.shellIds;
+          for (const [k, a] of agents) {
+            if (Array.isArray(ids) && !ids.includes(a.shell)) agents.delete(k);
+          }
+        }
+        render();
+      });
+
+      // Persist on unload so last cost delta isn't lost.
+      window.addEventListener("beforeunload", persistAlltimeCost);
+    </script>
+  </body>
+</html>

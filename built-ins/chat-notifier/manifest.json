@@ -1,0 +1,25 @@
+{
+  "id": "taiku.chat-notifier",
+  "name": "Chat Notifier",
+  "version": "1.1.0",
+  "author": "taiku",
+  "description": "Desktop notifications and toasts on new chat messages",
+  "tagline": "Never miss a chat message",
+  "categories": ["collaboration"],
+  "permissions": [
+    "events.subscribe",
+    "chat.read",
+    "ui.toast",
+    "ui.notify",
+    "audio.play"
+  ],
+  "panels": [
+    {
+      "id": "chat-notifier-bg",
+      "title": "Chat Notifier",
+      "position": "sidebar",
+      "htmlUrl": "panel.html",
+      "background": true
+    }
+  ]
+}

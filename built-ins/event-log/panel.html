@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #18181b;
+        color: #a1a1aa;
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: 11px;
+        padding: 0;
+        overflow: hidden;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+      .toolbar {
+        flex-shrink: 0;
+        background: #18181b;
+        border-bottom: 1px solid #27272a;
+        padding: 4px 8px;
+        display: flex;
+        gap: 4px;
+        align-items: center;
+        z-index: 1;
+        overflow-x: auto;
+        white-space: nowrap;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+      .toolbar::-webkit-scrollbar {
+        display: none;
+      }
+      .toolbar button {
+        background: #27272a;
+        border: 1px solid #3f3f46;
+        color: #a1a1aa;
+        font-size: 10px;
+        padding: 2px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .toolbar button:hover {
+        background: #3f3f46;
+        color: #e4e4e7;
+      }
+      .toolbar button.active {
+        background: #4f46e5;
+        border-color: #6366f1;
+        color: #e4e4e7;
+      }
+      .sep {
+        width: 1px;
+        height: 14px;
+        background: #3f3f46;
+        margin: 0 2px;
+      }
+      .count {
+        color: #71717a;
+        font-size: 10px;
+        margin-left: auto;
+      }
+      #log {
+        padding: 4px 0;
+        flex: 1;
+        overflow-y: auto;
+      }
+      .entry {
+        padding: 3px 8px;
+        border-bottom: 1px solid #1f1f23;
+        display: flex;
+        gap: 6px;
+        align-items: baseline;
+        font-family: ui-monospace, monospace;
+      }
+      .entry:hover {
+        background: #1f1f23;
+      }
+      .entry.hidden {
+        display: none;
+      }
+      .ts {
+        color: #52525b;
+        flex-shrink: 0;
+        font-size: 10px;
+      }
+      .badge {
+        font-size: 9px;
+        padding: 1px 5px;
+        border-radius: 3px;
+        flex-shrink: 0;
+        text-transform: uppercase;
+        font-weight: 600;
+      }
+      .badge.terminal {
+        background: #1e3a5f;
+        color: #60a5fa;
+      }
+      .badge.agent {
+        background: #2d1a3a;
+        color: #a78bfa;
+      }
+      .badge.chat {
+        background: #3b1f54;
+        color: #c084fc;
+      }
+      .badge.user {
+        background: #1a3a2a;
+        color: #4ade80;
+      }
+      .badge.shell {
+        background: #3a2a1a;
+        color: #fb923c;
+      }
+      .badge.plugin {
+        background: #1a2a3a;
+        color: #38bdf8;
+      }
+      .badge.tunnel {
+        background: #3a1a2a;
+        color: #fb7185;
+      }
+      .badge.layout {
+        background: #1a2a1a;
+        color: #86efac;
+      }
+      .badge.tile {
+        background: #2a2a1a;
+        color: #fde68a;
+      }
+      .badge.workspace {
+        background: #1a1a2a;
+        color: #93c5fd;
+      }
+      .badge.default {
+        background: #27272a;
+        color: #a1a1aa;
+      }
+      .data {
+        color: #d4d4d8;
+        word-break: break-all;
+      }
+      .empty {
+        color: #52525b;
+        text-align: center;
+        padding: 24px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="toolbar">
+      <button id="clear">Clear</button>
+      <label
+        style="
+          color: #71717a;
+          font-size: 10px;
+          display: flex;
+          align-items: center;
+          gap: 3px;
+        "
+        ><input
+          type="checkbox"
+          id="auto"
+          checked
+          style="accent-color: #6366f1"
+        />
+        Auto</label
+      >
+      <div class="sep"></div>
+      <button class="filter active" data-cat="all">All</button>
+      <button class="filter" data-cat="agent">Agent</button>
+      <button class="filter" data-cat="chat">Chat</button>
+      <button class="filter" data-cat="user">User</button>
+      <button class="filter" data-cat="shell">Shell</button>
+      <button class="filter" data-cat="terminal">Terminal</button>
+      <button class="filter" data-cat="layout">Layout</button>
+      <button class="filter" data-cat="tile">Tile</button>
+      <button class="filter" data-cat="workspace">Workspace</button>
+      <button class="filter" data-cat="tunnel">Tunnel</button>
+      <button class="filter" data-cat="plugin">Plugin</button>
+      <span class="count" id="count">0 events</span>
+    </div>
+    <div id="log"></div>
+    <p id="empty" class="empty">Waiting for events...</p>
+    <script>
+      const log = document.getElementById("log"),
+        empty = document.getElementById("empty"),
+        countEl = document.getElementById("count");
+      const autoEl = document.getElementById("auto");
+      let count = 0,
+        activeFilter = "all",
+        pluginId = "",
+        reqId = 0;
+
+      // Dedup: track last event fingerprint per type to suppress identical consecutive events.
+      const lastEventKey = new Map();
+
+      function updateCount() {
+        const visible =
+          activeFilter === "all"
+            ? count
+            : log.querySelectorAll(`.entry:not(.hidden)`).length;
+        const total = count;
+        countEl.textContent =
+          activeFilter === "all"
+            ? `${total} event${total === 1 ? "" : "s"}`
+            : `${visible}/${total} events`;
+      }
+
+      function send(method, params) {
+        if (!pluginId) return;
+        window.parent.postMessage(
+          {
+            type: "taiku:request",
+            id: "el_" + ++reqId,
+            pluginId,
+            method,
+            params,
+          },
+          "*",
+        );
+      }
+
+      document.getElementById("clear").onclick = () => {
+        log.innerHTML = "";
+        count = 0;
+        countEl.textContent = "0 events";
+        empty.style.display = "";
+        lastEventKey.clear();
+      };
+
+      document.querySelectorAll(".filter").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          document
+            .querySelectorAll(".filter")
+            .forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          activeFilter = btn.dataset.cat;
+          log.querySelectorAll(".entry").forEach((el) => {
+            el.classList.toggle(
+              "hidden",
+              activeFilter !== "all" && el.dataset.cat !== activeFilter,
+            );
+          });
+          updateCount();
+        });
+      });
+
+      function classify(t) {
+        if (t.startsWith("agent.")) return "agent";
+        if (t.includes("agent")) return "agent";
+        if (t.includes("chat")) return "chat";
+        if (t.includes("user")) return "user";
+        if (t.includes("shell") && !t.includes("terminal")) return "shell";
+        if (t.includes("terminal")) return "terminal";
+        if (t.includes("layout")) return "layout";
+        if (t.includes("tile")) return "tile";
+        if (t.includes("workspace")) return "workspace";
+        if (t.includes("tunnel")) return "tunnel";
+        if (t.includes("plugin")) return "plugin";
+        return "default";
+      }
+
+      function esc(s) {
+        return String(s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+
+      /** Format event data into a human-readable string. */
+      function formatData(type, data) {
+        if (!data || Object.keys(data).length === 0) return "";
+
+        // User events — show device info
+        if (type === "user_joined") {
+          let s = esc(data.userName || "?");
+          if (data.device)
+            s += ` <span style="color:#71717a">(${esc(data.device)})</span>`;
+          if (data.canWrite === false)
+            s += ` <span style="color:#52525b">read-only</span>`;
+          return s;
+        }
+        if (type === "user_left") {
+          let s = esc(data.userName || `User ${data.userId ?? "?"}`);
+          if (data.device)
+            s += ` <span style="color:#71717a">(${esc(data.device)})</span>`;
+          return s;
+        }
+        if (type === "user_focused") {
+          let s = esc(data.userName || "?");
+          if (data.device)
+            s += ` <span style="color:#71717a">(${esc(data.device)})</span>`;
+          s += ` → Shell #${data.focus ?? "?"}`;
+          return s;
+        }
+        if (type === "user_unfocused") {
+          let s = esc(data.userName || "?");
+          if (data.device)
+            s += ` <span style="color:#71717a">(${esc(data.device)})</span>`;
+          s += ` unfocused`;
+          if (data.previousFocus != null) s += ` Shell #${data.previousFocus}`;
+          return s;
+        }
+
+        // Agent events — format based on sub-type
+        if (type.startsWith("agent.")) {
+          const sub = type.slice(6); // strip "agent." prefix
+          const sid = data.agentSessionId
+            ? data.agentSessionId.slice(0, 8)
+            : "";
+          const agent = data.agent || "";
+          const prefix = sid
+            ? `<span style="color:#71717a">${esc(agent)} ${sid}</span> `
+            : "";
+
+          if (sub === "user_message")
+            return prefix + esc((data.text || "").slice(0, 150));
+          if (sub === "assistant_message")
+            return prefix + esc((data.text || "").slice(0, 150));
+          if (sub === "thinking")
+            return (
+              prefix +
+              `<span style="color:#818cf8">thinking</span> ${esc(
+                (data.text || "").slice(0, 80),
+              )}`
+            );
+          if (sub === "tool_call")
+            return (
+              prefix +
+              `<span style="color:#60a5fa">${esc(data.tool_name || "?")}</span>`
+            );
+          if (sub === "tool_result")
+            return (
+              prefix +
+              `${
+                data.is_error
+                  ? '<span style="color:#f87171">error</span>'
+                  : "ok"
+              } ${esc((data.output || "").slice(0, 80))}`
+            );
+          if (sub === "token_usage") {
+            const cost =
+              data.cost != null ? `$${Number(data.cost).toFixed(4)}` : "";
+            return (
+              prefix +
+              `in:${data.input ?? 0} out:${data.output ?? 0} cached:${
+                data.cached ?? 0
+              } ${cost}`
+            );
+          }
+          if (sub === "session_start")
+            return (
+              prefix +
+              `model=${esc(data.model || "?")} v${esc(data.version || "?")}`
+            );
+          if (sub === "session_end")
+            return (
+              prefix +
+              `${
+                data.duration_ms
+                  ? (data.duration_ms / 1000).toFixed(1) + "s"
+                  : "ended"
+              }`
+            );
+          if (sub === "turn_complete")
+            return (
+              prefix +
+              `${
+                data.duration_ms
+                  ? (data.duration_ms / 1000).toFixed(1) + "s"
+                  : "done"
+              }`
+            );
+          if (sub === "file_change")
+            return (
+              prefix + `${esc(data.action || "?")} ${esc(data.path || "")}`
+            );
+          if (sub === "interrupt")
+            return (
+              prefix +
+              `<span style="color:#fbbf24">interrupted</span>${
+                data.tool_name ? " " + esc(data.tool_name) : ""
+              }`
+            );
+          return prefix + JSON.stringify(data).slice(0, 150);
+        }
+
+        // Chat
+        if (type === "chat") {
+          return `<span style="color:#c084fc">${esc(
+            data.userName || "?",
+          )}</span> ${esc(data.message || "")}`;
+        }
+
+        // Shells
+        if (type === "shells_changed") {
+          return data.count != null
+            ? `${data.count} shell(s)`
+            : JSON.stringify(data).slice(0, 100);
+        }
+
+        // Default: compact JSON
+        return esc(JSON.stringify(data).slice(0, 200));
+      }
+
+      window.addEventListener("message", (e) => {
+        const d = e.data;
+        if (!d) return;
+        if (d.type === "taiku:init") {
+          pluginId = d.pluginId;
+          send("subscribeEvents");
+          return;
+        }
+        if (d.type !== "taiku:event") return;
+        const ev = d.event;
+
+        // Deduplicate: skip if identical event type + data as the last one of this type.
+        const dataKey = JSON.stringify(ev.data || {});
+        const fingerprint = ev.type + ":" + dataKey;
+        if (lastEventKey.get(ev.type) === fingerprint) return;
+        lastEventKey.set(ev.type, fingerprint);
+
+        empty.style.display = "none";
+        const cat = classify(ev.type);
+        const ts = new Date(ev.timestamp || Date.now());
+        const time = ts.toLocaleTimeString("en", {
+          hour12: false,
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        });
+        const div = document.createElement("div");
+        div.className = "entry";
+        div.dataset.cat = cat;
+        if (activeFilter !== "all" && cat !== activeFilter)
+          div.classList.add("hidden");
+        const formatted = formatData(ev.type, ev.data);
+        div.innerHTML = `<span class="ts">${time}</span><span class="badge ${cat}">${esc(
+          ev.type,
+        )}</span><span class="data">${formatted}</span>`;
+        log.appendChild(div);
+        count++;
+        updateCount();
+        if (autoEl.checked) log.scrollTop = log.scrollHeight;
+      });
+    </script>
+  </body>
+</html>
