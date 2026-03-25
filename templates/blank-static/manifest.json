@@ -3,7 +3,7 @@
   "name": "Blank Static",
   "version": "0.1.0",
   "author": "you",
-  "description": "Minimal starter for a static taiku plugin.",
+  "description": "Minimal static taiku plugin using the host bridge directly.",
   "permissions": ["session.read", "ui.panel", "ui.toolbar.custom"],
   "panels": [
     {

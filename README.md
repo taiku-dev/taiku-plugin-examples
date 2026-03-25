@@ -6,7 +6,6 @@ Static example plugins and starter templates for taiku.
 
 - `examples/file-browser`: browse files from the session working directory
 - `examples/terminal-commander`: inspect shells and send commands
-- `templates/session-snapshot`: a richer starter that shows session state and shell previews
 - `templates/blank-static`: the smallest useful static plugin skeleton
 
 ## How to use these
@@ -26,5 +25,10 @@ These examples intentionally stay close to taiku's built-in static plugins:
 - plain HTML, CSS, and JavaScript
 - direct use of the plugin bridge over `postMessage`
 
-If you want typed helpers or tests, add `@taiku/plugin-sdk` on top of one of the
-templates.
+The blank template is intentionally minimal, but it still demonstrates the
+important part: taiku sends `taiku:init`, your iframe sends `taiku:request`,
+and taiku answers with `taiku:response`. The two example plugins show the same
+bridge pattern in more realistic forms.
+
+If you want typed helpers or tests, add `@taiku/plugin-sdk` on top of the
+template.

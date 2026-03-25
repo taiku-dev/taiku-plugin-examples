@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -11,7 +11,9 @@
         min-height: 100vh;
         background: #18181b;
         color: #d4d4d8;
-        font: 12px/1.5 system-ui, sans-serif;
+        font:
+          12px/1.5 system-ui,
+          sans-serif;
       }
 
       h1 {
@@ -32,6 +34,28 @@
         padding: 10px;
       }
 
+      .meta {
+        margin-top: 10px;
+        display: grid;
+        gap: 6px;
+      }
+
+      .row {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 11px;
+      }
+
+      .label {
+        color: #71717a;
+      }
+
+      .value {
+        color: #f4f4f5;
+        font-family: ui-monospace, monospace;
+      }
+
       button {
         margin-top: 10px;
         border: 1px solid #3f3f46;
@@ -46,9 +70,93 @@
   </head>
   <body>
     <h1>Blank Static</h1>
-    <p>Smallest useful starting point for a taiku panel plugin.</p>
+    <p>Small static panel that talks to taiku over the plugin bridge.</p>
     <div class="card" id="status">Waiting for taiku…</div>
+    <div class="meta" id="meta" hidden>
+      <div class="row">
+        <span class="label">Session</span>
+        <span class="value" id="session-name">-</span>
+      </div>
+      <div class="row">
+        <span class="label">Shells</span>
+        <span class="value" id="shell-count">-</span>
+      </div>
+      <div class="row">
+        <span class="label">Plugin ID</span>
+        <span class="value" id="plugin-id">-</span>
+      </div>
+    </div>
     <button id="refresh" type="button">Refresh</button>
-    <script type="module" src="./panel.js"></script>
+    <script>
+      let pluginId = "";
+      let requestId = 0;
+
+      const statusEl = document.getElementById("status");
+      const metaEl = document.getElementById("meta");
+      const sessionNameEl = document.getElementById("session-name");
+      const shellCountEl = document.getElementById("shell-count");
+      const pluginIdEl = document.getElementById("plugin-id");
+      const refreshEl = document.getElementById("refresh");
+
+      function send(method, params = {}) {
+        const id = "starter_" + ++requestId;
+        window.parent.postMessage(
+          { type: "taiku:request", id, pluginId, method, params },
+          "*",
+        );
+        return id;
+      }
+
+      function sendAsync(method, params = {}) {
+        return new Promise((resolve, reject) => {
+          const id = send(method, params);
+          const timeout = window.setTimeout(() => {
+            window.removeEventListener("message", onMessage);
+            reject(new Error("Timed out waiting for taiku"));
+          }, 10000);
+
+          function onMessage(event) {
+            const data = event.data;
+            if (data?.type !== "taiku:response" || data.id !== id) return;
+            window.clearTimeout(timeout);
+            window.removeEventListener("message", onMessage);
+            if (data.error) reject(new Error(data.error));
+            else resolve(data.result);
+          }
+
+          window.addEventListener("message", onMessage);
+        });
+      }
+
+      async function refresh() {
+        const [session, shells] = await Promise.all([
+          sendAsync("getSession"),
+          sendAsync("getShells"),
+        ]);
+
+        statusEl.textContent = "Bridge connected";
+        sessionNameEl.textContent = session.name || session.id;
+        shellCountEl.textContent = String(shells.length);
+        pluginIdEl.textContent = pluginId;
+        metaEl.hidden = false;
+      }
+
+      refreshEl.addEventListener("click", async () => {
+        try {
+          await refresh();
+        } catch (error) {
+          statusEl.textContent = error.message;
+        }
+      });
+
+      window.addEventListener("message", (event) => {
+        const data = event.data;
+        if (data?.type !== "taiku:init") return;
+        pluginId = data.pluginId;
+        refresh().catch((error) => {
+          statusEl.textContent = error.message;
+        });
+      });
+    </script>
   </body>
 </html>
