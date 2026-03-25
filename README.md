@@ -6,9 +6,9 @@ Static example plugins and starter templates for taiku.
 
 - `examples/file-browser`: browse files from the session working directory
 - `examples/terminal-commander`: inspect shells and send commands
-- `built-ins/agent-monitor`: shipped taiku plugin for tracking live agent state
-- `built-ins/chat-notifier`: shipped taiku background plugin for chat alerts
-- `built-ins/event-log`: shipped taiku panel for browsing live session events
+- `examples/agent-monitor`: shipped taiku plugin for tracking live agent state
+- `examples/chat-notifier`: shipped taiku background plugin for chat alerts
+- `examples/event-log`: shipped taiku panel for browsing live session events
 - `templates/blank-static`: the smallest useful static plugin skeleton
 
 ## How to use these
@@ -30,9 +30,9 @@ These examples intentionally stay close to taiku's built-in static plugins:
 
 The blank template is intentionally minimal, but it still demonstrates the
 important part: taiku sends `taiku:init`, your iframe sends `taiku:request`,
-and taiku answers with `taiku:response`. The two example plugins show the same
-bridge pattern in more realistic forms, and the built-ins show how taiku uses
-the same model in production.
+and taiku answers with `taiku:response`. The example plugins show the same
+bridge pattern in more realistic forms, including a few that are shipped inside
+taiku itself.
 
 `music-player` is not exported yet because the current built-in includes a
 bundled audio asset, so it is less clean as a bare reference repo entry.
