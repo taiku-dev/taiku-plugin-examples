@@ -1,161 +1,76 @@
 <!doctype html>
-<html lang="en">
+<html>
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Blank Static</title>
     <style>
       body {
-        margin: 0;
+        background: rgb(var(--tk-bg, 10 10 12));
+        color: rgb(var(--tk-ink, 244 244 245));
+        font-family: var(--tk-font-ui, sans-serif);
         padding: 12px;
-        min-height: 100vh;
-        background: #18181b;
-        color: #d4d4d8;
-        font:
-          12px/1.5 system-ui,
-          sans-serif;
       }
-
-      h1 {
-        margin: 0 0 6px;
-        font-size: 14px;
-        color: #f4f4f5;
-      }
-
-      p {
-        margin: 0 0 10px;
-        color: #a1a1aa;
-      }
-
-      .card {
-        border: 1px solid #27272a;
-        border-radius: 8px;
-        background: #09090b;
-        padding: 10px;
-      }
-
-      .meta {
-        margin-top: 10px;
-        display: grid;
-        gap: 6px;
-      }
-
-      .row {
-        display: flex;
-        justify-content: space-between;
-        gap: 8px;
-        font-size: 11px;
-      }
-
-      .label {
-        color: #71717a;
-      }
-
-      .value {
-        color: #f4f4f5;
-        font-family: ui-monospace, monospace;
-      }
-
-      button {
-        margin-top: 10px;
-        border: 1px solid #3f3f46;
-        background: #27272a;
-        color: #f4f4f5;
-        padding: 6px 10px;
-        border-radius: 6px;
-        font-size: 11px;
-        cursor: pointer;
-      }
+      pre { white-space: pre-wrap; }
     </style>
   </head>
   <body>
-    <h1>Blank Static</h1>
-    <p>Small static panel that talks to taiku over the plugin bridge.</p>
-    <div class="card" id="status">Waiting for taiku…</div>
-    <div class="meta" id="meta" hidden>
-      <div class="row">
-        <span class="label">Session</span>
-        <span class="value" id="session-name">-</span>
-      </div>
-      <div class="row">
-        <span class="label">Shells</span>
-        <span class="value" id="shell-count">-</span>
-      </div>
-      <div class="row">
-        <span class="label">Plugin ID</span>
-        <span class="value" id="plugin-id">-</span>
-      </div>
-    </div>
-    <button id="refresh" type="button">Refresh</button>
+    <p>Current session</p>
+    <pre id="session">Waiting for taiku.</pre>
     <script>
-      let pluginId = "";
-      let requestId = 0;
+      const host = window.parent;
+      let identity = null;
+      let port = null;
+      let nextId = 0;
+      const pending = new Map();
 
-      const statusEl = document.getElementById("status");
-      const metaEl = document.getElementById("meta");
-      const sessionNameEl = document.getElementById("session-name");
-      const shellCountEl = document.getElementById("shell-count");
-      const pluginIdEl = document.getElementById("plugin-id");
-      const refreshEl = document.getElementById("refresh");
-
-      function send(method, params = {}) {
-        const id = "starter_" + ++requestId;
-        window.parent.postMessage(
-          { type: "taiku:request", id, pluginId, method, params },
-          "*",
-        );
-        return id;
+      function applyTheme(theme) {
+        for (const [key, value] of Object.entries(theme?.tokens || {}))
+          document.documentElement.style.setProperty(key, value);
       }
 
-      function sendAsync(method, params = {}) {
+      function receive(data) {
+        if (data?.type === "taiku:theme") applyTheme(data.theme);
+        if (data?.type !== "taiku:response" || !pending.has(data.id)) return;
+        const { resolve, reject } = pending.get(data.id);
+        pending.delete(data.id);
+        data.error ? reject(new Error(data.error)) : resolve(data.result);
+      }
+
+      function call(method, params = {}) {
+        const id = "request_" + ++nextId;
+        const { pluginId, panelId, authToken } = identity;
         return new Promise((resolve, reject) => {
-          const id = send(method, params);
-          const timeout = window.setTimeout(() => {
-            window.removeEventListener("message", onMessage);
-            reject(new Error("Timed out waiting for taiku"));
-          }, 10000);
-
-          function onMessage(event) {
-            const data = event.data;
-            if (data?.type !== "taiku:response" || data.id !== id) return;
-            window.clearTimeout(timeout);
-            window.removeEventListener("message", onMessage);
-            if (data.error) reject(new Error(data.error));
-            else resolve(data.result);
-          }
-
-          window.addEventListener("message", onMessage);
+          pending.set(id, { resolve, reject });
+          const message = {
+            type: "taiku:request", id, pluginId, panelId, authToken, method, params,
+          };
+          if (port) port.postMessage(message);
+          else host.postMessage(message, "*");
         });
       }
-
-      async function refresh() {
-        const [session, shells] = await Promise.all([
-          sendAsync("getSession"),
-          sendAsync("getShells"),
-        ]);
-
-        statusEl.textContent = "Bridge connected";
-        sessionNameEl.textContent = session.name || session.id;
-        shellCountEl.textContent = String(shells.length);
-        pluginIdEl.textContent = pluginId;
-        metaEl.hidden = false;
-      }
-
-      refreshEl.addEventListener("click", async () => {
-        try {
-          await refresh();
-        } catch (error) {
-          statusEl.textContent = error.message;
-        }
-      });
 
       window.addEventListener("message", (event) => {
+        if (event.source !== host) return;
         const data = event.data;
-        if (data?.type !== "taiku:init") return;
-        pluginId = data.pluginId;
-        refresh().catch((error) => {
-          statusEl.textContent = error.message;
-        });
+        if (data?.type !== "taiku:init") {
+          receive(data);
+          return;
+        }
+        identity = data;
+        applyTheme(data.theme);
+        if (port) port.close();
+        port = event.ports?.[0] || null;
+        if (port) {
+          port.onmessage = (event) => receive(event.data);
+          port.postMessage({ type: "taiku:port-ready" });
+        }
+        call("getSession").then(
+          (session) => {
+            document.getElementById("session").textContent = JSON.stringify(session, null, 2);
+          },
+          (error) => {
+            document.getElementById("session").textContent = error.message;
+          },
+        );
       });
     </script>
   </body>

@@ -1,0 +1,388 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+  </head>
+  <body>
+    <!-- Runs hidden beside each agent tile. Draws nothing: it hands taiku the
+         rows for the agent it sits beside, and taiku draws them in the rail. -->
+    <script>
+      // The host hands this document a port with init. Requests go on it,
+      // and its answers and events come back on it, re-dispatched here as the
+      // host's messages: a port reaches only the document that received it.
+      let taikuPort = null;
+      function taikuPost(msg) {
+        if (taikuPort) taikuPort.postMessage(msg);
+        else window.parent.postMessage(msg, "*");
+      }
+      window.addEventListener("message", (e) => {
+        if (e.source !== window.parent || e.data?.type !== "taiku:init") return;
+        const port = e.ports && e.ports[0];
+        if (!port) return;
+        if (taikuPort) taikuPort.close();
+        taikuPort = port;
+        // Events move to the port from here on, before any request.
+        port.postMessage({ type: "taiku:port-ready" });
+        port.onmessage = (ev) => {
+          if (ev.data?.type === "taiku:init") return;
+          window.dispatchEvent(
+            new MessageEvent("message", {
+              data: ev.data,
+              source: window.parent,
+            }),
+          );
+        };
+      });
+      let pluginId = "",
+        panelId = "",
+        authToken = "",
+        reqId = 0,
+        slug = "";
+      const hostWindow = window.parent;
+
+      function ask(method, params) {
+        return new Promise((resolve, reject) => {
+          const id = "adp_" + ++reqId;
+          const handler = (e) => {
+            if (e.source !== hostWindow) return;
+            const d = e.data;
+            if (d?.type === "taiku:response" && d.id === id) {
+              window.removeEventListener("message", handler);
+              if (d.error) reject(new Error(d.error));
+              else resolve(d.result);
+            }
+          };
+          window.addEventListener("message", handler);
+          taikuPost({
+            type: "taiku:request",
+            id,
+            pluginId,
+            panelId,
+            authToken,
+            method,
+            params,
+          });
+          setTimeout(() => {
+            window.removeEventListener("message", handler);
+            reject(new Error("Timeout"));
+          }, 10000);
+        });
+      }
+
+      const DAY = 24 * 60 * 60 * 1000;
+
+      function ago(iso) {
+        const mins = Math.max(
+          0,
+          Math.round((Date.now() - Date.parse(iso)) / 60000),
+        );
+        return mins < 60 ? mins + "m" : Math.round(mins / 60) + "h";
+      }
+
+      // How a run began, for its tip, as a person would say it.
+      const BEGAN = {
+        cron: "on its schedule",
+        event: "on an event",
+        manual: "started by you",
+        api: "started from the API",
+        resume: "resumed",
+      };
+      // A run's name when nobody's words asked it anything (a role woken by
+      // an event or mail, a turn taiku wrote): how it began.
+      const NAMED = {
+        cron: "Scheduled run",
+        event: "Run on an event",
+        manual: "Run you started",
+        api: "Run from the API",
+        resume: "Resumed run",
+      };
+
+      // What a run did, from its tool calls, in a person's words: "Read 2
+      // files, ran 1 command". Hosts name the same tool in either case.
+      const DID = [
+        [/^(read|view|cat)$|_read$/, "read", "file", "files"],
+        [
+          /^(bash|shell|exec|run|terminal)$|_run$/,
+          "ran",
+          "command",
+          "commands",
+        ],
+        [
+          /^(write|edit|multiedit|apply_patch|patch)$|_(write|edit)$/,
+          "changed",
+          "file",
+          "files",
+        ],
+        [/^(grep|glob|find|ls)$|search/, "searched", "", ""],
+        [/fetch/, "fetched", "page", "pages"],
+      ];
+
+      function didWhat(calls) {
+        const counts = DID.map(() => 0);
+        let other = 0;
+        for (const c of calls || []) {
+          const tool = String((c && c.tool) || "").toLowerCase();
+          const i = DID.findIndex(([named]) => named.test(tool));
+          if (i >= 0) counts[i]++;
+          else other++;
+        }
+        const said = [];
+        DID.forEach(([, verb, one, many], i) => {
+          const n = counts[i];
+          if (!n) return;
+          if (!one) said.push(verb + (n === 1 ? " once" : " " + n + " times"));
+          else said.push(verb + " " + n + " " + (n === 1 ? one : many));
+        });
+        if (other)
+          said.push(
+            "used " + other + (other === 1 ? " other tool" : " other tools"),
+          );
+        const line = said.join(", ");
+        return line && line[0].toUpperCase() + line.slice(1);
+      }
+
+      // A tip is one short line: taiku keeps 40 characters of it, so a
+      // longer one is cut at a word.
+      function tip(words) {
+        if (words.length <= 40) return words;
+        const cut = words.slice(0, 39);
+        const at = cut.lastIndexOf(" ");
+        return (at > 20 ? cut.slice(0, at) : cut) + "…";
+      }
+
+      // A provider that stopped answering, said as a person would.
+      const modelTimedOut = (error) =>
+        /timed? ?out/i.test(error) && /provider|model/i.test(error);
+
+      // What a failed run left behind, by its first words: its first line,
+      // cut at a word, as a sentence.
+      function outcome(error) {
+        let first = error.split("\n")[0].trim();
+        if (!first) return "";
+        if (first.length > 80) {
+          const at = first.lastIndexOf(" ", 79);
+          first = first.slice(0, at > 40 ? at : 79) + "…";
+        }
+        return first[0].toUpperCase() + first.slice(1);
+      }
+
+      // How the agent beside this panel's runs went in the last day. Its
+      // reviews are not listed here: a role's own group already lists them,
+      // and one review shows once. A group with no rows is not drawn.
+      // Read again every few seconds while a run is going, so a run that
+      // finished stops showing its Running mark; none going, none asked.
+      const POLL_MS = 4000;
+      let reading = false;
+      // A read asked for while one was going, or an agent that changed under
+      // it: asked again when it ends, for the agent now beside this panel.
+      let again = false;
+      let timer = 0;
+      // The rows last handed over, for which agent, and whether a run was
+      // going: a read that fails keeps them, rather than drawing a day with no
+      // runs, and says why beside them for taiku to badge this plugin's mark.
+      let shown = { slug: "", rows: [], going: false };
+      // After a failed read it reads again: as often as while a run is going
+      // if one was, else in half a minute.
+      const RETRY_MS = 30000;
+
+      async function load() {
+        if (!slug) return;
+        if (reading) {
+          again = true;
+          return;
+        }
+        reading = true;
+        const mine = slug;
+        clearTimeout(timer);
+        let going = false;
+        let failed = false;
+        const since = Date.now() - DAY;
+        try {
+          const runs = await ask("getAgentRuns", { slug: mine, limit: 20 });
+          // The tile moved to another agent while this was read: these are
+          // the last one's runs, and are not handed over.
+          if (mine !== slug) {
+            again = true;
+            return;
+          }
+          // What needs the person leads: a run that failed or ran out of
+          // time, then one still going, then one its owner stopped. Each is
+          // named by what it was asked, with what it did or why it failed
+          // under it. A run with nothing to say yet (asked nothing in anyone's
+          // words, no tool used) has no row, and the runs that went fine fold
+          // into one quiet row at the foot, which the group's count leaves
+          // out.
+          const wrong = [];
+          const underway = [];
+          const stopped = [];
+          let fine = 0;
+          for (const r of runs) {
+            if (Date.parse(r.started_at) < since) continue;
+            if (r.status === "ok") {
+              fine++;
+              continue;
+            }
+            const did = didWhat(r.tool_calls);
+            const began = BEGAN[r.trigger] || "started";
+            const task = typeof r.task === "string" ? r.task.trim() : "";
+            const row = {
+              key: "run-" + r.id,
+              meta: ago(r.started_at),
+              text: task || NAMED[r.trigger] || "Run",
+            };
+            if (r.status === "running" || r.status === "pending") {
+              // Waiting to start is still going, as the app's own tiles read
+              // it, and is read again until it has something to say.
+              going = true;
+              if (!did && !task) continue;
+              underway.push({
+                ...row,
+                icon: "activity",
+                tone: "run",
+                status: tip("Running, " + began),
+                ...(did ? { detail: did } : {}),
+              });
+            } else if (r.status === "cancelled") {
+              // One its owner stopped is not a failure: the app's word for it.
+              if (!did && !task) continue;
+              stopped.push({
+                ...row,
+                icon: "square",
+                tone: "muted",
+                status: tip("Stopped, " + began),
+                ...(did ? { detail: did } : {}),
+              });
+            } else {
+              // It failed or ran out of time. A time limit or a provider that
+              // stopped answering is said in a sentence, with the stored error
+              // for its tip; any other failure by the error's own first words,
+              // with how the run began for its tip.
+              const error = String(r.error || "");
+              const timedOut = r.status === "timeout";
+              const sentence = timedOut
+                ? "Ran past its time limit"
+                : modelTimedOut(error)
+                  ? "Timed out waiting for the model"
+                  : "";
+              wrong.push({
+                ...row,
+                icon: "x-circle",
+                tone: "danger",
+                status: tip(
+                  sentence ? error || "Timed out" : "Failed, " + began,
+                ),
+                detail:
+                  sentence ||
+                  outcome(error) ||
+                  did ||
+                  "Failed before using a tool",
+              });
+            }
+          }
+          const rows = [...wrong, ...underway, ...stopped];
+          if (fine)
+            rows.push({
+              key: "fine",
+              icon: "check",
+              tone: "muted",
+              text: fine + " ran fine in the last day",
+              summary: true,
+            });
+          // Named for the agent they were read for: rows that reach taiku after
+          // the tile moved on are dropped there, not drawn under the next one.
+          // A call taiku refuses is not a read that failed: nothing is kept.
+          const done = await ask("setAgentPanel", { slug: mine, rows }).catch(
+            () => null,
+          );
+          if (done && done.kept !== false) shown = { slug: mine, rows, going };
+        } catch (err) {
+          // A read that failed is a failure that happened: the last rows stay
+          // as they were, and why goes beside them. taiku badges this plugin's
+          // mark with it, the words its tip and description, never a row.
+          if (mine === slug) {
+            // Refused for good (no such agent on this account, or not its to
+            // read: a 4xx but a timeout or too many reads; or taiku's word
+            // that it came with the session rather than from the person
+            // signed in), it never will read: nothing is drawn and it isn't
+            // read again, as before. Told by taiku's own words at the start
+            // of the error, never by the server's body after them.
+            if (
+              /^(?:Failed to read \w+ \(status 4(?!08|29)\d\d\)|This plugin came with the session)/.test(
+                String(err?.message ?? err),
+              )
+            ) {
+              shown = { slug: "", rows: [], going: false };
+              await ask("clearAgentPanel").catch(() => {});
+              return;
+            }
+            // taiku's word that this plugin has to be installed again before it
+            // reads as the person signed in: said as it is, beside the mark,
+            // and not read again until the plugin loads again.
+            const said = String(err?.message ?? err);
+            if (
+              /^This session doesn't say who installed this plugin/.test(said)
+            ) {
+              const last =
+                shown.slug === mine ? shown : { rows: [], going: false };
+              shown = { slug: mine, rows: last.rows, going: false };
+              await ask("setAgentPanel", {
+                slug: mine,
+                rows: last.rows,
+                failed: said,
+              }).catch(() => {});
+              return;
+            }
+            failed = true;
+            const last =
+              shown.slug === mine ? shown : { rows: [], going: false };
+            shown = { slug: mine, rows: last.rows, going: last.going };
+            await ask("setAgentPanel", {
+              slug: mine,
+              rows: last.rows,
+              failed: "Couldn't read the runs",
+            }).catch(() => {});
+          }
+        } finally {
+          reading = false;
+          if (again) {
+            again = false;
+            load();
+          } else if (going) {
+            timer = setTimeout(load, POLL_MS);
+          } else if (failed) {
+            timer = setTimeout(load, shown.going ? POLL_MS : RETRY_MS);
+          }
+        }
+      }
+
+      window.addEventListener("message", (e) => {
+        if (e.source !== hostWindow) return;
+        const d = e.data;
+        if (!d) return;
+        if (d.type === "taiku:init" || d.type === "taiku:theme") {
+          for (const [key, value] of Object.entries(d.theme?.tokens || {}))
+            document.documentElement.style.setProperty(key, value);
+        }
+        if (d.type === "taiku:init") {
+          pluginId = d.pluginId;
+          panelId = d.panelId || "";
+          authToken = d.authToken || "";
+          return;
+        }
+        if (d.type !== "taiku:event") return;
+        // The agent this panel sits beside, sent on load and when it changes.
+        if (d.event?.type === "agent-panel.context") {
+          const next = String(d.event.data?.slug || "");
+          // Another agent: the last one's runs go from the rail now, not when
+          // the new read lands.
+          if (slug && next !== slug) {
+            ask("clearAgentPanel").catch(() => {});
+            shown = { slug: "", rows: [], going: false };
+          }
+          slug = next;
+          load();
+        }
+      });
+    </script>
+  </body>
+</html>

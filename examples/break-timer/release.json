@@ -1,0 +1,107 @@
+{
+  "format": 1,
+  "manifest": {
+    "id": "example.break-timer",
+    "name": "Break Timer",
+    "version": "0.1.0",
+    "author": "taiku",
+    "description": "Reminds you to step away on a fixed interval. One manifest, two surfaces: a panel in the browser and desktop app, and a headless process in the terminal client.",
+    "tagline": "A nudge to stand up, wherever you run taiku",
+    "homepageUrl": "https://taiku.live",
+    "documentationUrl": "https://docs.taiku.live/docs/plugins-and-developers/building-plugins#one-plugin-both-surfaces",
+    "supportUrl": "https://github.com/taiku-dev/taiku-plugins/issues",
+    "bugsUrl": "https://github.com/taiku-dev/taiku-plugins/issues",
+    "license": "MIT",
+    "keywords": [
+      "taiku",
+      "break",
+      "timer",
+      "reminder",
+      "native"
+    ],
+    "categories": [
+      "productivity"
+    ],
+    "permissions": [
+      "ui.panel",
+      "ui.toolbar.custom",
+      "ui.toast",
+      "ui.notify",
+      "palette.contribute"
+    ],
+    "panels": [
+      {
+        "id": "break-timer-panel",
+        "title": "Break Timer",
+        "position": "sidebar",
+        "htmlUrl": "panel.html",
+        "defaultWidth": 300
+      }
+    ],
+    "toolbarActions": [
+      {
+        "id": "open-break-timer",
+        "label": "Break Timer",
+        "icon": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"13\" r=\"8\"/><path d=\"M12 9v4l2 2\"/><path d=\"M9 2h6\"/></svg>",
+        "panelId": "break-timer-panel"
+      }
+    ],
+    "commands": [
+      {
+        "id": "start",
+        "label": "Start break timer",
+        "category": "Break Timer",
+        "keywords": [
+          "break",
+          "timer",
+          "pomodoro",
+          "reminder"
+        ],
+        "action": {
+          "type": "openPanel",
+          "panelId": "break-timer-panel"
+        }
+      }
+    ],
+    "exec": {
+      "command": "python3",
+      "args": [
+        "main.py"
+      ]
+    },
+    "settings": [
+      {
+        "key": "intervalMinutes",
+        "label": "Interval (minutes)",
+        "description": "How long between reminders.",
+        "type": "number",
+        "default": 50,
+        "min": 1,
+        "max": 240,
+        "step": 1
+      },
+      {
+        "key": "breakNow",
+        "label": "Take a break now",
+        "description": "Send the reminder immediately and restart the interval.",
+        "type": "button",
+        "eventType": "break-timer.now",
+        "buttonLabel": "Break now"
+      }
+    ]
+  },
+  "files": {
+    "README.md": {
+      "sha256": "e288aae5386010fad1f28f1efe5ce64fd853d4dd1d518c7fd16a4d9e81f45a6b",
+      "type": "application/octet-stream"
+    },
+    "main.py": {
+      "sha256": "730053cb1d5e74aeed4559e8cad5f0b66c00109d3b0fb26d22ba913c6a352c36",
+      "type": "text/plain"
+    },
+    "panel.html": {
+      "sha256": "e9b062e1bd39f914148c91a994482729aed6defa7996b3b54f43afab508a2b9b",
+      "type": "text/html"
+    }
+  }
+}

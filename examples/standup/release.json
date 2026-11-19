@@ -1,0 +1,57 @@
+{
+  "format": 1,
+  "manifest": {
+    "id": "example.standup",
+    "name": "Done list",
+    "version": "0.1.0",
+    "author": "taiku",
+    "description": "Adds /standup to your agent composer. It drafts a standup from the list you keep in its panel, and you send it.",
+    "tagline": "A standup draft from your list",
+    "license": "MIT",
+    "keywords": [
+      "taiku",
+      "agents",
+      "composer",
+      "standup",
+      "example"
+    ],
+    "categories": [
+      "productivity"
+    ],
+    "surfaces": [
+      "web",
+      "phone"
+    ],
+    "permissions": [
+      "composer.contribute",
+      "ui.panel",
+      "session.read"
+    ],
+    "panels": [
+      {
+        "id": "list",
+        "title": "Done list",
+        "position": "sidebar",
+        "htmlUrl": "panel.html"
+      }
+    ],
+    "composerCommands": [
+      {
+        "name": "standup",
+        "description": "Draft a standup from your list.",
+        "panelId": "list"
+      }
+    ],
+    "documentationUrl": "https://docs.taiku.live/docs/plugins-and-developers/building-plugins"
+  },
+  "files": {
+    "README.md": {
+      "sha256": "74cecf9401ec929996d6783a36db50c95a1ccd0855c580b71da27f7a071b0e81",
+      "type": "application/octet-stream"
+    },
+    "panel.html": {
+      "sha256": "9c4a3b890a2d55d537ca05564a4c8d16a1ae043b02bc0e19cbae146c64a387fb",
+      "type": "text/html"
+    }
+  }
+}

@@ -1,0 +1,807 @@
+<!doctype html>
+<html>
+  <head>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: rgb(var(--tk-bg, 10 10 12));
+        color: rgb(var(--tk-ink-secondary, 205 208 214));
+        font-family: var(
+          --tk-ui-font,
+          Helvetica,
+          "Helvetica Neue",
+          "Nimbus Sans",
+          Arial,
+          sans-serif
+        );
+        font-size: 13px;
+        line-height: 20px;
+        padding: 12px;
+        overflow-y: auto;
+        height: 100vh;
+      }
+      label {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        line-height: 20px;
+        color: rgb(var(--tk-ink-muted, 146 146 157));
+        margin: 12px 0 4px;
+      }
+      /* The first label sits 12px under the header: only an error above it
+         pushes it down, and it takes its own 12px. */
+      label:first-of-type {
+        margin-top: 0;
+      }
+      #top:not([hidden]) {
+        margin-bottom: 12px;
+      }
+      #agent,
+      input,
+      textarea {
+        width: 100%;
+        font: inherit;
+        color: rgb(var(--tk-ink, 244 244 245));
+        background: rgb(var(--tk-surface-2, 32 32 37));
+        border: 1px solid rgb(var(--tk-border, 58 58 66));
+        border-radius: 4px;
+        padding: 6px;
+      }
+      /* The agent field: the chosen agent's face and name, and a chevron. A
+         native select draws no pictures, so it is a select drawn here (a
+         select-only combobox): the focus stays on the field while its list
+         is open, and the keys a select takes work on it. */
+      .pick {
+        position: relative;
+      }
+      #agent {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 34px;
+        cursor: pointer;
+      }
+      #agent[aria-disabled="true"] {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .name {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .chevron {
+        flex: none;
+        width: 16px;
+        height: 16px;
+        color: rgb(var(--tk-ink-muted, 146 146 157));
+        transition: transform var(--tk-motion-feedback, 120ms)
+          var(--tk-motion-out, cubic-bezier(0.2, 0, 0, 1));
+      }
+      #agent[aria-expanded="true"] .chevron {
+        transform: rotate(180deg);
+      }
+      /* The list, as the app draws a menu: it arrives from 3px above as it
+         fades in, and leaves the same way. */
+      #agent-list {
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        right: 0;
+        z-index: 2;
+        max-height: 200px;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        padding: 4px 0;
+        background: rgb(var(--tk-surface-3, 44 44 50));
+        border: 1px solid rgb(var(--tk-line-strong, 63 63 70));
+        border-radius: 6px;
+        box-shadow:
+          0 12px 32px -8px rgba(0, 0, 0, 0.6),
+          0 0 0 1px rgba(0, 0, 0, 0.3);
+        visibility: hidden;
+        opacity: 0;
+        transform: translateY(-3px);
+        transition:
+          opacity var(--tk-motion-feedback, 120ms)
+            var(--tk-motion-out, cubic-bezier(0.2, 0, 0, 1)),
+          transform var(--tk-motion-feedback, 120ms)
+            var(--tk-motion-out, cubic-bezier(0.2, 0, 0, 1)),
+          visibility 0s linear var(--tk-motion-feedback, 120ms);
+      }
+      #agent-list.open {
+        visibility: visible;
+        opacity: 1;
+        transform: none;
+        transition-delay: 0s;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #agent-list,
+        .chevron {
+          transition: none;
+        }
+      }
+      /* A row: 32px, its words at 13/20, 8px in from the box; the chosen
+         one carries a check, and the one the keys or the pointer are on is
+         lit. */
+      .opt {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 32px;
+        padding: 0 8px;
+        color: rgb(var(--tk-ink-secondary, 205 208 214));
+        cursor: pointer;
+      }
+      .opt.lit {
+        background: rgb(var(--tk-ink, 244 244 245) / 0.08);
+        color: rgb(var(--tk-ink, 244 244 245));
+      }
+      .check {
+        flex: none;
+        width: 14px;
+        height: 14px;
+      }
+      .opt[aria-selected="false"] .check {
+        visibility: hidden;
+      }
+      /* An agent's face as the app draws it: its animal at 84% of a disc of
+         its colour, 32% over the surface, with a hairline at the disc's edge;
+         a dark animal gets a faint light rim. */
+      .face {
+        display: inline-grid;
+        place-items: center;
+        flex: none;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: color-mix(
+          in srgb,
+          var(--who, transparent) 32%,
+          rgb(var(--tk-surface-1, 22 22 25))
+        );
+        box-shadow: inset 0 0 0 1px rgb(var(--tk-line, 38 38 43));
+      }
+      .face img {
+        width: 84%;
+        height: 84%;
+        object-fit: contain;
+      }
+      .face.rim img {
+        filter: drop-shadow(0 0 0.5px rgb(var(--tk-ink, 244 244 245) / 0.43));
+      }
+      textarea {
+        display: block;
+        min-height: 96px;
+        resize: vertical;
+      }
+      /* The one action: 28px painted, 8px on each side, and never narrower
+         for a long line beside it. */
+      button {
+        flex: none;
+        height: 28px;
+        padding: 0 8px;
+        line-height: 1;
+        font: inherit;
+        font-weight: 600;
+        color: rgb(var(--tk-ink, 244 244 245));
+        background: rgb(var(--tk-accent, 46 143 255) / 0.2);
+        border: 1px solid rgb(var(--tk-accent, 46 143 255));
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      /* The button and its help: drawn here, never a native title, and only on
+         hover or focus; a screen reader reads it as the button's description. */
+      .act {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      /* Beside the button: "Loading" until the agents are in, and after a note
+         what happened ("Left. Triage reads it at its next run."). The fields
+         above it do not move for either. */
+      #result {
+        font-size: 12px;
+        line-height: 16px;
+        color: rgb(var(--tk-ink-muted, 146 146 157));
+      }
+      #result:empty {
+        display: none;
+      }
+      #hint {
+        display: none;
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        z-index: 1;
+        max-width: 100%;
+        padding: 4px 8px;
+        font-size: 12px;
+        line-height: 16px;
+        color: rgb(var(--tk-ink, 244 244 245));
+        background: rgb(var(--tk-surface-2, 32 32 37));
+        border: 1px solid rgb(var(--tk-border, 58 58 66));
+        border-radius: 4px;
+      }
+      /* On hover only where a pointer can hover: in a phone's Safari a tap is
+         a hover first, and a hover that makes something appear takes the tap,
+         so Leave note would need two. The keyboard's focus reveals it too. */
+      @media (hover: hover) {
+        #send:hover + #hint {
+          display: block;
+        }
+      }
+      #send:focus-visible + #hint {
+        display: block;
+      }
+      /* Leave note can't be used for an agent with no job on: it stays
+         focusable, and its help says why. A press opens it too, which is how
+         a phone asks, since nothing there hovers. */
+      #send.tip + #hint {
+        display: block;
+      }
+      /* Once the line beside the button says what happened, the help would
+         say it again under a pointer still resting on the button: it stays
+         shut until a new note starts and the line goes. Not where Leave note
+         can't be used: its help is why, and the line may be about a note to
+         another agent, picked while that one was still sending. */
+      .act:has(> #result:not(:empty))
+        > #send:not([aria-disabled="true"])
+        + #hint {
+        display: none;
+      }
+      /* With no hover the help is not drawn: it stays the button's description
+         for a screen reader, and once a note is left the line beside the
+         button says the same as what happened. */
+      button:disabled,
+      button[aria-disabled="true"] {
+        opacity: 0.5;
+        cursor: default;
+      }
+      #top[hidden],
+      #status[hidden] {
+        display: none;
+      }
+      #status {
+        margin-bottom: 4px;
+        font-size: 12px;
+        line-height: 16px;
+        color: rgb(var(--tk-ink-muted, 146 146 157));
+      }
+      #status.bad {
+        color: rgb(var(--tk-danger, 239 68 68));
+      }
+      details {
+        margin-top: 4px;
+        font-size: 12px;
+        line-height: 16px;
+        color: rgb(var(--tk-ink-muted, 146 146 157));
+      }
+      pre {
+        margin-top: 4px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: inherit;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="top" hidden>
+      <p id="status" hidden></p>
+      <details id="raw" hidden>
+        <summary>Details</summary>
+        <pre id="raw-text"></pre>
+      </details>
+    </div>
+    <label id="agent-label">Agent</label>
+    <div class="pick">
+      <div
+        id="agent"
+        role="combobox"
+        tabindex="-1"
+        aria-labelledby="agent-label"
+        aria-haspopup="listbox"
+        aria-controls="agent-list"
+        aria-expanded="false"
+        aria-disabled="true"
+      ></div>
+      <div id="agent-list" role="listbox" aria-labelledby="agent-label"></div>
+    </div>
+    <template id="chevron-icon"
+      ><svg
+        class="chevron"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <polyline points="6 9 12 15 18 9" /></svg
+    ></template>
+    <template id="check-icon"
+      ><svg
+        class="check"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <polyline points="20 6 9 17 4 12" /></svg
+    ></template>
+    <label for="subject">Subject</label>
+    <input id="subject" maxlength="200" />
+    <label for="body">Note</label>
+    <textarea id="body"></textarea>
+    <div class="act">
+      <button id="send" disabled aria-describedby="hint">Leave note</button>
+      <span id="hint" role="tooltip"
+        >Read at its next run. It does not wake the agent.</span
+      >
+      <span id="result" role="status">Loading</span>
+    </div>
+    <script>
+      // The host hands this document a port with init. Requests go on it,
+      // and its answers and events come back on it, re-dispatched here as the
+      // host's messages: a port reaches only the document that received it.
+      let taikuPort = null;
+      function taikuPost(msg) {
+        if (taikuPort) taikuPort.postMessage(msg);
+        else window.parent.postMessage(msg, "*");
+      }
+      window.addEventListener("message", (e) => {
+        if (e.source !== window.parent || e.data?.type !== "taiku:init") return;
+        const port = e.ports && e.ports[0];
+        if (!port) return;
+        if (taikuPort) taikuPort.close();
+        taikuPort = port;
+        // Events move to the port from here on, before any request.
+        port.postMessage({ type: "taiku:port-ready" });
+        port.onmessage = (ev) => {
+          if (ev.data?.type === "taiku:init") return;
+          window.dispatchEvent(
+            new MessageEvent("message", {
+              data: ev.data,
+              source: window.parent,
+            }),
+          );
+        };
+      });
+      let pluginId = "",
+        panelId = "",
+        authToken = "",
+        reqId = 0;
+      const hostWindow = window.parent;
+      window.addEventListener("message", (e) => {
+        if (e.source !== hostWindow) return;
+        const d = e.data;
+        if (!d) return;
+        if (d.panelId && panelId && d.panelId !== panelId) return;
+        if (d.type === "taiku:init") {
+          // Sandboxed with an opaque origin, the panel inherits no CSS from the
+          // app, so the host sends its design tokens as data instead.
+          for (const [name, value] of Object.entries(d.theme?.tokens || {})) {
+            document.documentElement.style.setProperty(name, value);
+          }
+          pluginId = d.pluginId;
+          panelId = d.panelId || "";
+          authToken = d.authToken || "";
+          load();
+        }
+      });
+
+      function ask(method, params) {
+        return new Promise((resolve, reject) => {
+          const id = "an_" + ++reqId;
+          const handler = (e) => {
+            if (e.source !== hostWindow) return;
+            const d = e.data;
+            if (d?.type === "taiku:response" && d.id === id) {
+              window.removeEventListener("message", handler);
+              if (d.error) reject(new Error(d.error));
+              else resolve(d.result);
+            }
+          };
+          window.addEventListener("message", handler);
+          taikuPost({
+            type: "taiku:request",
+            id,
+            pluginId,
+            panelId,
+            authToken,
+            method,
+            params,
+          });
+          setTimeout(() => {
+            window.removeEventListener("message", handler);
+            reject(new Error("Timeout"));
+          }, 10000);
+        });
+      }
+
+      const agentEl = document.getElementById("agent");
+      const subjectEl = document.getElementById("subject");
+      const bodyEl = document.getElementById("body");
+      const sendEl = document.getElementById("send");
+      const statusEl = document.getElementById("status");
+
+      const rawEl = document.getElementById("raw");
+      const rawText = document.getElementById("raw-text");
+      const topEl = document.getElementById("top");
+      const resultEl = document.getElementById("result");
+
+      // The top line is for what is wrong, and takes no room while nothing is.
+      function say(text, bad) {
+        statusEl.textContent = text;
+        statusEl.className = bad ? "bad" : "";
+        statusEl.hidden = !text;
+        rawEl.hidden = true;
+        topEl.hidden = !text;
+      }
+
+      // What went wrong, in words. The server's own sentence is the reason
+      // when it gave one (an agent that takes no plugin mail, too many notes);
+      // the host's whole message stays behind Details.
+      function failed(what, err) {
+        const message = String(err && err.message ? err.message : err);
+        let reason = "";
+        const json = message.match(/\{.*\}/s);
+        if (json) {
+          try {
+            reason = String(JSON.parse(json[0]).error || "");
+          } catch (_) {}
+        }
+        const refused = /Missing required permission/.test(message);
+        say(
+          refused
+            ? "This plugin has not been allowed to " + what + "."
+            : reason
+              ? reason.charAt(0).toUpperCase() + reason.slice(1) + "."
+              : "Couldn't " + what + ".",
+          true,
+        );
+        rawText.textContent = message;
+        rawEl.hidden = false;
+        resultEl.textContent = "";
+      }
+
+      // The agents, the one the note goes to, and the one the keys or the
+      // pointer are on while the list is open.
+      const listEl = document.getElementById("agent-list");
+      const chevron = document.getElementById("chevron-icon");
+      const check = document.getElementById("check-icon");
+      let agents = [];
+      let chosen = -1;
+      let lit = -1;
+
+      // An agent's face, as the host hands it over: a picture the panel may
+      // show (a data: URL) and its colour for the disc under it.
+      function faceOf(a) {
+        const disc = document.createElement("span");
+        disc.className = "face";
+        disc.setAttribute("aria-hidden", "true");
+        if (a.face) {
+          disc.style.setProperty("--who", a.face.colour);
+          disc.classList.toggle("rim", a.face.rim === true);
+          const img = document.createElement("img");
+          img.src = a.face.src;
+          img.alt = "";
+          img.draggable = false;
+          disc.append(img);
+        }
+        return disc;
+      }
+
+      // Names are the owner's own text, and go in as text.
+      function nameOf(a) {
+        const name = document.createElement("span");
+        name.className = "name";
+        name.textContent = a.display_name;
+        return name;
+      }
+
+      const options = () => [...listEl.children];
+      const isOpen = () => agentEl.getAttribute("aria-expanded") === "true";
+      const ready = () => agentEl.getAttribute("aria-disabled") !== "true";
+
+      // Only a job's run reads an agent's mail, and a note wakes nothing, so
+      // an agent with no job on would never read one. Its record says so
+      // (`wakes: false`).
+      const readsNotes = () => agents[chosen]?.wakes !== false;
+      const hintEl = document.getElementById("hint");
+      const help = hintEl.textContent;
+
+      // For an agent that would never read it, Leave note can't be used: it
+      // stays focusable, and why is its own help, which a screen reader reads
+      // as its description. The last note's word goes either way.
+      function fit() {
+        const name = agents[chosen]?.display_name || "The agent";
+        if (readsNotes()) sendEl.removeAttribute("aria-disabled");
+        else sendEl.setAttribute("aria-disabled", "true");
+        hintEl.textContent = readsNotes()
+          ? help
+          : name + " has no job on, so no run would read a note.";
+        sendEl.classList.remove("tip");
+        resultEl.textContent = "";
+      }
+
+      function choose(i) {
+        const changed = chosen !== -1 && i !== chosen;
+        chosen = i;
+        const a = agents[i];
+        agentEl.replaceChildren(
+          faceOf(a),
+          nameOf(a),
+          chevron.content.cloneNode(true),
+        );
+        for (const [j, o] of options().entries()) {
+          o.setAttribute("aria-selected", String(j === i));
+        }
+        // Another agent starts a new note: the last one's word goes.
+        if (changed) fit();
+      }
+
+      // Under the pointer the row is already in view. From the keys, the list
+      // scrolls just enough to show it, and nothing around the list moves.
+      function light(i, scroll = true) {
+        lit = Math.max(0, Math.min(agents.length - 1, i));
+        for (const [j, o] of options().entries()) {
+          o.classList.toggle("lit", j === lit);
+        }
+        const o = options()[lit];
+        agentEl.setAttribute("aria-activedescendant", o.id);
+        if (!scroll) return;
+        const bottom = o.offsetTop + o.offsetHeight;
+        if (o.offsetTop < listEl.scrollTop) listEl.scrollTop = o.offsetTop;
+        else if (bottom > listEl.scrollTop + listEl.clientHeight)
+          listEl.scrollTop = bottom - listEl.clientHeight;
+      }
+
+      // The list opens where all of it shows. The field is the panel's first
+      // line, so there is never room above it, and below it there may be too
+      // little of the panel (a phone's sheet at its first height shows
+      // 150px). So the list keeps to the height the panel has, scrolling
+      // within itself past that, and while it is open the panel scrolls
+      // itself, as far as it must, to show the field and the list whole.
+      let raised = 0;
+      const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+      function place() {
+        const room = innerHeight - agentEl.offsetHeight - 8;
+        listEl.style.maxHeight = Math.max(64, Math.min(200, room)) + "px";
+        const over = listEl.getBoundingClientRect().bottom + 4 - innerHeight;
+        if (over <= 0) return;
+        window.scrollTo({
+          top: window.scrollY + over,
+          behavior: calm() ? "auto" : "smooth",
+        });
+        raised = over;
+      }
+      function unplace() {
+        if (!raised) return;
+        window.scrollBy({
+          top: -raised,
+          behavior: calm() ? "auto" : "smooth",
+        });
+        raised = 0;
+      }
+
+      function setOpen(open) {
+        if (open === isOpen()) return;
+        agentEl.setAttribute("aria-expanded", String(open));
+        listEl.classList.toggle("open", open);
+        if (open) {
+          place();
+          light(chosen);
+        } else {
+          agentEl.removeAttribute("aria-activedescendant");
+          unplace();
+        }
+      }
+
+      function pick(i) {
+        choose(i);
+        setOpen(false);
+      }
+
+      // The first agent whose name starts with what was typed in the last
+      // half second, after the one lit (or chosen), as a select finds one;
+      // the same letter again steps to the next agent it starts.
+      let typed = "";
+      let typedAt = 0;
+      function find(key) {
+        const now = Date.now();
+        typed = (now - typedAt > 500 ? "" : typed) + key.toLowerCase();
+        typedAt = now;
+        const same = [...typed].every((c) => c === typed[0]);
+        const needle = same ? typed[0] : typed;
+        const from = (isOpen() ? lit : chosen) + (same ? 1 : 0);
+        for (let k = 0; k < agents.length; k++) {
+          const j = (from + k) % agents.length;
+          if (agents[j].display_name.toLowerCase().startsWith(needle)) return j;
+        }
+        return -1;
+      }
+
+      // The keys that open a shut list, as they open a select's.
+      const OPENS = ["ArrowDown", "ArrowUp", "Enter", " ", "Home", "End"];
+      agentEl.addEventListener("keydown", (e) => {
+        if (!ready()) return;
+        const last = agents.length - 1;
+        if (
+          e.key.length === 1 &&
+          e.key !== " " &&
+          !e.ctrlKey &&
+          !e.metaKey &&
+          !e.altKey
+        ) {
+          e.preventDefault();
+          const j = find(e.key);
+          if (j >= 0) {
+            setOpen(true);
+            light(j);
+          }
+          return;
+        }
+        if (!isOpen()) {
+          if (OPENS.includes(e.key)) {
+            e.preventDefault();
+            setOpen(true);
+            if (e.key === "Home") light(0);
+            if (e.key === "End") light(last);
+          }
+          return;
+        }
+        switch (e.key) {
+          case "ArrowDown":
+            light(lit + 1);
+            break;
+          case "ArrowUp":
+            if (e.altKey) pick(lit);
+            else light(lit - 1);
+            break;
+          case "Home":
+            light(0);
+            break;
+          case "End":
+            light(last);
+            break;
+          case "PageDown":
+            light(lit + 10);
+            break;
+          case "PageUp":
+            light(lit - 10);
+            break;
+          case "Enter":
+          case " ":
+            pick(lit);
+            break;
+          case "Escape":
+            setOpen(false);
+            break;
+          case "Tab":
+            // Takes the lit agent, and the focus moves on as Tab does.
+            pick(lit);
+            return;
+          default:
+            return;
+        }
+        e.preventDefault();
+      });
+      agentEl.addEventListener("click", () => {
+        if (ready()) setOpen(!isOpen());
+      });
+      // Pressed anywhere else: the list shuts and the choice stands.
+      agentEl.addEventListener("blur", () => setOpen(false));
+      // A press in the list keeps the focus on the field.
+      listEl.addEventListener("mousedown", (e) => e.preventDefault());
+      listEl.addEventListener("click", (e) => {
+        const o = e.target.closest('[role="option"]');
+        if (o) pick(options().indexOf(o));
+      });
+      listEl.addEventListener("pointermove", (e) => {
+        const o = e.target.closest('[role="option"]');
+        if (o && options().indexOf(o) !== lit)
+          light(options().indexOf(o), false);
+      });
+      document.getElementById("agent-label").addEventListener("click", () => {
+        if (ready()) agentEl.focus();
+      });
+
+      async function load() {
+        try {
+          const list = await ask("listAgents");
+          if (!list.length) {
+            resultEl.textContent = "";
+            say("You have no agents yet.");
+            return;
+          }
+          agents = list;
+          listEl.replaceChildren(
+            ...agents.map((a, i) => {
+              const o = document.createElement("div");
+              o.id = "agent-" + i;
+              o.className = "opt";
+              o.setAttribute("role", "option");
+              o.append(faceOf(a), nameOf(a), check.content.cloneNode(true));
+              return o;
+            }),
+          );
+          choose(0);
+          agentEl.setAttribute("aria-disabled", "false");
+          agentEl.tabIndex = 0;
+          sendEl.disabled = false;
+          say("");
+          fit();
+        } catch (err) {
+          failed("read your agents", err);
+        }
+      }
+
+      sendEl.addEventListener("click", async () => {
+        // Can't be used: the press shows why, and sends nothing.
+        if (!readsNotes()) {
+          sendEl.classList.add("tip");
+          return;
+        }
+        // The agent's name as the field shows it, taken now: the line after
+        // the note names the agent it was left for.
+        const agent = agents[chosen];
+        const name = agent?.display_name || "The agent";
+        sendEl.disabled = true;
+        sendEl.textContent = "Sending...";
+        resultEl.textContent = "";
+        say("");
+        try {
+          await ask("sendAgentMail", {
+            slug: agent?.slug,
+            subject: subjectEl.value,
+            body: bodyEl.value,
+          });
+          subjectEl.value = "";
+          bodyEl.value = "";
+          resultEl.textContent = "Left. " + name + " reads it at its next run.";
+        } catch (err) {
+          failed("leave the note", err);
+        } finally {
+          sendEl.disabled = false;
+          sendEl.textContent = "Leave note";
+        }
+      });
+      // The tip a press opened shuts once the focus or a finger goes
+      // elsewhere: a phone's Safari never focuses a tapped button.
+      sendEl.addEventListener("blur", () => sendEl.classList.remove("tip"));
+      document.addEventListener("pointerdown", (e) => {
+        if (e.target !== sendEl) sendEl.classList.remove("tip");
+      });
+
+      // A new note starts from nothing: the last one's word goes.
+      for (const el of [subjectEl, bodyEl]) {
+        el.addEventListener("input", fit);
+      }
+
+      // The app's theme changed while this panel was open: the host sends the
+      // whole token set again, to be applied as at init.
+      window.addEventListener("message", (e) => {
+        if (e.source !== window.parent || e.data?.type !== "taiku:theme")
+          return;
+        for (const [name, value] of Object.entries(
+          e.data.theme?.tokens || {},
+        )) {
+          document.documentElement.style.setProperty(name, value);
+        }
+      });
+    </script>
+  </body>
+</html>

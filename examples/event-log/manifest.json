@@ -1,11 +1,28 @@
 {
-  "id": "taiku.event-log",
+  "id": "example.event-log",
   "name": "Event Log",
   "version": "1.0.0",
   "author": "taiku",
   "description": "Log all session events in real time",
   "tagline": "Real-time event stream viewer",
-  "categories": ["monitoring", "devtools"],
+  "homepageUrl": "https://taiku.live",
+  "documentationUrl": "https://docs.taiku.live/docs/plugins-and-developers/built-in-plugins#event-log",
+  "supportUrl": "https://github.com/taiku-dev/taiku-plugins/issues",
+  "fundingUrl": "https://github.com/sponsors/nathanzhao",
+  "bugsUrl": "https://github.com/taiku-dev/taiku-plugins/issues",
+  "repository": "taiku-dev/taiku-plugin-examples",
+  "license": "MIT",
+  "keywords": [
+    "taiku",
+    "events",
+    "logs",
+    "debugging",
+    "monitoring"
+  ],
+  "categories": [
+    "monitoring",
+    "devtools"
+  ],
   "permissions": [
     "session.read",
     "events.subscribe",
@@ -37,7 +54,10 @@
       "label": "Toggle Event Log",
       "hotkey": "Cmd+Shift+Y",
       "category": "Plugins",
-      "action": { "type": "openPanel", "panelId": "event-log-panel" }
+      "action": {
+        "type": "openPanel",
+        "panelId": "event-log-panel"
+      }
     }
   ]
 }

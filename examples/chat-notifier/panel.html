@@ -1,12 +1,13 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
   <head>
     <style>
       body {
         margin: 0;
-        background: #18181b;
-        color: #a1a1aa;
-        font-family: system-ui;
+        background: rgb(var(--tk-bg, 10 10 12));
+        color: rgb(var(--tk-ink-secondary, 205 208 214));
+        font-family:
+          Helvetica, "Helvetica Neue", "Nimbus Sans", Arial, sans-serif;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -18,20 +19,63 @@
   <body>
     <p>Chat Notifier is active (no panel needed)</p>
     <script>
-      let pluginId = "",
-        reqId = 0;
-      function call(method, params) {
-        const id = "cn_" + ++reqId;
-        window.parent.postMessage(
-          { type: "taiku:request", id, pluginId, method, params },
-          "*",
-        );
+      // The host hands this document a port with init. Requests go on it,
+      // and its answers and events come back on it, re-dispatched here as the
+      // host's messages: a port reaches only the document that received it.
+      let taikuPort = null;
+      function taikuPost(msg) {
+        if (taikuPort) taikuPort.postMessage(msg);
+        else window.parent.postMessage(msg, "*");
       }
       window.addEventListener("message", (e) => {
+        if (e.source !== window.parent || e.data?.type !== "taiku:init") return;
+        const port = e.ports && e.ports[0];
+        if (!port) return;
+        if (taikuPort) taikuPort.close();
+        taikuPort = port;
+        // Events move to the port from here on, before any request.
+        port.postMessage({ type: "taiku:port-ready" });
+        port.onmessage = (ev) => {
+          if (ev.data?.type === "taiku:init") return;
+          window.dispatchEvent(
+            new MessageEvent("message", {
+              data: ev.data,
+              source: window.parent,
+            }),
+          );
+        };
+      });
+      let pluginId = "",
+        panelId = "",
+        authToken = "",
+        reqId = 0;
+      const hostWindow = window.parent;
+      function call(method, params) {
+        const id = "cn_" + ++reqId;
+        taikuPost({
+          type: "taiku:request",
+          id,
+          pluginId,
+          panelId,
+          authToken,
+          method,
+          params,
+        });
+      }
+      window.addEventListener("message", (e) => {
+        if (e.source !== hostWindow) return;
         const d = e.data;
         if (!d) return;
+        if (d.panelId && panelId && d.panelId !== panelId) return;
         if (d.type === "taiku:init") {
+          // Sandboxed with an opaque origin, the panel inherits no CSS from the
+          // app, so the host sends its design tokens as data instead.
+          for (const [name, value] of Object.entries(d.theme?.tokens || {})) {
+            document.documentElement.style.setProperty(name, value);
+          }
           pluginId = d.pluginId;
+          panelId = d.panelId || "";
+          authToken = d.authToken || "";
           return;
         }
         if (d.type !== "taiku:event") return;
@@ -54,6 +98,18 @@
             kind: "info",
             duration: 4000,
           });
+        }
+      });
+
+      // The app's theme changed while this panel was open: the host sends the
+      // whole token set again, to be applied as at init.
+      window.addEventListener("message", (e) => {
+        if (e.source !== window.parent || e.data?.type !== "taiku:theme")
+          return;
+        for (const [name, value] of Object.entries(
+          e.data.theme?.tokens || {},
+        )) {
+          document.documentElement.style.setProperty(name, value);
         }
       });
     </script>

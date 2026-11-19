@@ -1,0 +1,322 @@
+<!doctype html>
+<html>
+  <head>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: rgb(var(--tk-bg, 10 10 12));
+        color: rgb(var(--tk-ink-secondary, 205 208 214));
+        font-family: var(
+          --tk-ui-font,
+          Helvetica,
+          "Helvetica Neue",
+          "Nimbus Sans",
+          Arial,
+          sans-serif
+        );
+        font-size: 13px;
+        line-height: 20px;
+        padding: 12px;
+        overflow-y: auto;
+        height: 100vh;
+      }
+      label {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        line-height: 20px;
+        color: rgb(var(--tk-ink-muted, 146 146 157));
+        margin: 16px 0 4px;
+      }
+      p#status + label,
+      details + label {
+        margin-top: 12px;
+      }
+      label:first-child {
+        margin-top: 0;
+      }
+      select,
+      input,
+      textarea {
+        width: 100%;
+        font: inherit;
+        color: rgb(var(--tk-ink, 244 244 245));
+        background: rgb(var(--tk-surface-2, 32 32 37));
+        border: 1px solid rgb(var(--tk-border, 58 58 66));
+        border-radius: 4px;
+        padding: 6px;
+      }
+      textarea {
+        min-height: 96px;
+        resize: vertical;
+      }
+      button {
+        margin-top: 10px;
+        font: inherit;
+        font-weight: 600;
+        color: rgb(var(--tk-ink, 244 244 245));
+        background: rgb(var(--tk-accent, 46 143 255) / 0.2);
+        border: 1px solid rgb(var(--tk-accent, 46 143 255));
+        border-radius: 4px;
+        padding: 6px 12px;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      #status {
+        margin-bottom: 4px;
+        font-size: 12px;
+        line-height: 16px;
+        color: rgb(var(--tk-ink-muted, 146 146 157));
+      }
+      #status.bad {
+        color: rgb(var(--tk-danger, 239 68 68));
+      }
+      details {
+        margin-top: 4px;
+        font-size: 12px;
+        line-height: 16px;
+        color: rgb(var(--tk-ink-muted, 146 146 157));
+      }
+      pre {
+        margin-top: 4px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: inherit;
+      }
+    </style>
+  </head>
+  <body>
+    <p id="status">Loading...</p>
+    <details id="raw" hidden>
+      <summary>Details</summary>
+      <pre id="raw-text"></pre>
+    </details>
+    <label for="agent">Agent</label>
+    <select id="agent" disabled></select>
+    <button id="page" disabled>A page fires</button>
+    <script>
+      // The host hands this document a port with init. Requests go on it,
+      // and its answers and events come back on it, re-dispatched here as the
+      // host's messages: a port reaches only the document that received it.
+      let taikuPort = null;
+      function taikuPost(msg) {
+        if (taikuPort) taikuPort.postMessage(msg);
+        else window.parent.postMessage(msg, "*");
+      }
+      window.addEventListener("message", (e) => {
+        if (e.source !== window.parent || e.data?.type !== "taiku:init") return;
+        const port = e.ports && e.ports[0];
+        if (!port) return;
+        if (taikuPort) taikuPort.close();
+        taikuPort = port;
+        // Events move to the port from here on, before any request.
+        port.postMessage({ type: "taiku:port-ready" });
+        port.onmessage = (ev) => {
+          if (ev.data?.type === "taiku:init") return;
+          window.dispatchEvent(
+            new MessageEvent("message", {
+              data: ev.data,
+              source: window.parent,
+            }),
+          );
+        };
+      });
+      let pluginId = "",
+        panelId = "",
+        authToken = "",
+        reqId = 0;
+      const hostWindow = window.parent;
+      window.addEventListener("message", (e) => {
+        if (e.source !== hostWindow) return;
+        const d = e.data;
+        if (!d) return;
+        if (d.panelId && panelId && d.panelId !== panelId) return;
+        if (d.type === "taiku:init") {
+          // Sandboxed with an opaque origin, the panel inherits no CSS from the
+          // app, so the host sends its design tokens as data instead.
+          for (const [name, value] of Object.entries(d.theme?.tokens || {})) {
+            document.documentElement.style.setProperty(name, value);
+          }
+          pluginId = d.pluginId;
+          panelId = d.panelId || "";
+          authToken = d.authToken || "";
+          load();
+        }
+      });
+
+      function ask(method, params) {
+        return new Promise((resolve, reject) => {
+          const id = "oc_" + ++reqId;
+          const handler = (e) => {
+            if (e.source !== hostWindow) return;
+            const d = e.data;
+            if (d?.type === "taiku:response" && d.id === id) {
+              window.removeEventListener("message", handler);
+              if (d.error) reject(new Error(d.error));
+              else resolve(d.result);
+            }
+          };
+          window.addEventListener("message", handler);
+          taikuPost({
+            type: "taiku:request",
+            id,
+            pluginId,
+            panelId,
+            authToken,
+            method,
+            params,
+          });
+          setTimeout(() => {
+            window.removeEventListener("message", handler);
+            reject(new Error("Timeout"));
+          }, 10000);
+        });
+      }
+
+      const agentEl = document.getElementById("agent");
+      const pageEl = document.getElementById("page");
+      const statusEl = document.getElementById("status");
+      const rawEl = document.getElementById("raw");
+      const rawText = document.getElementById("raw-text");
+
+      function say(text, bad) {
+        statusEl.textContent = text;
+        statusEl.className = bad ? "bad" : "";
+        rawEl.hidden = true;
+      }
+
+      // What went wrong, in words. The server's own sentence is the reason
+      // when it gave one; the host's whole message stays behind Details.
+      function failed(what, err) {
+        const message = String(err && err.message ? err.message : err);
+        let reason = "";
+        const json = message.match(/\{.*\}/s);
+        if (json) {
+          try {
+            reason = String(JSON.parse(json[0]).error || "");
+          } catch (_) {}
+        }
+        const refused = /Missing required permission/.test(message);
+        say(
+          refused
+            ? "This plugin has not been allowed to " + what + "."
+            : reason
+              ? reason.charAt(0).toUpperCase() + reason.slice(1) + "."
+              : "Couldn't " + what + ".",
+          true,
+        );
+        rawText.textContent = message;
+        rawEl.hidden = false;
+      }
+
+      // The ask this panel last made for each agent, by slug, and what the
+      // owner answered. It is in memory, and also read from taiku with
+      // getAgentAsks when the panel opens, so an answer given while it was
+      // closed is still found.
+      const asked = {};
+
+      function describe(ask) {
+        if (!ask) return "Nothing asked yet.";
+        if (ask.state === "open")
+          return "Asked you in your inbox. Waiting for your answer.";
+        if (ask.state === "dismissed") return "You dismissed the question.";
+        const a = ask.answer || {};
+        return "You chose: " + (a.label || a.text || "an answer") + ".";
+      }
+
+      async function refresh() {
+        const slug = agentEl.value;
+        if (!slug) return;
+        try {
+          const asks = await ask("getAgentAsks", { slug });
+          asked[slug] = asks[0] || null;
+          say(describe(asked[slug]));
+        } catch (err) {
+          failed("read your questions", err);
+        }
+      }
+
+      async function load() {
+        try {
+          const agents = await ask("listAgents");
+          if (!agents.length) {
+            say("You have no agents yet.");
+            return;
+          }
+          // Names are the owner's own text, and go in as text.
+          for (const a of agents) {
+            const o = document.createElement("option");
+            o.value = a.slug;
+            o.textContent = a.display_name;
+            agentEl.append(o);
+          }
+          agentEl.disabled = false;
+          pageEl.disabled = false;
+          await refresh();
+        } catch (err) {
+          failed("read your agents", err);
+        }
+      }
+
+      agentEl.addEventListener("change", refresh);
+
+      pageEl.addEventListener("click", async () => {
+        const slug = agentEl.value;
+        pageEl.disabled = true;
+        say("Telling the agent...");
+        try {
+          // The agent reads this at its next run, marked as a plugin's.
+          await ask("sendAgentMail", {
+            slug,
+            subject: "A page fired: checkout is failing",
+            body: "The checkout health check failed three times in five minutes.",
+          });
+          // And the owner is asked, in their inbox, whether to page anyone.
+          const made = await ask("askAgentQuestion", {
+            slug,
+            prompt: "Checkout is failing. Page the on-call?",
+            choices: ["Page them", "Wait"],
+          });
+          asked[slug] = { id: made.id, state: "open", answer: null };
+          say(describe(asked[slug]));
+        } catch (err) {
+          failed("raise the page", err);
+        } finally {
+          pageEl.disabled = false;
+        }
+      });
+
+      // The owner answered (or dismissed) a question this plugin asked, while
+      // this panel was open.
+      window.addEventListener("message", (e) => {
+        if (e.source !== hostWindow) return;
+        const d = e.data;
+        if (d?.type !== "taiku:event") return;
+        const t = d.event?.type;
+        if (t !== "ask.answered" && t !== "ask.dismissed") return;
+        const s = d.event.data || {};
+        asked[s.slug] = { id: s.ask_id, state: s.state, answer: s.answer };
+        if (s.slug === agentEl.value) say(describe(asked[s.slug]));
+      });
+
+      // The app's theme changed while this panel was open: the host sends the
+      // whole token set again, to be applied as at init.
+      window.addEventListener("message", (e) => {
+        if (e.source !== window.parent || e.data?.type !== "taiku:theme")
+          return;
+        for (const [name, value] of Object.entries(
+          e.data.theme?.tokens || {},
+        )) {
+          document.documentElement.style.setProperty(name, value);
+        }
+      });
+    </script>
+  </body>
+</html>

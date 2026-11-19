@@ -1,14 +1,18 @@
 {
-  "id": "taiku.agent-monitor",
+  "id": "example.agent-monitor",
   "name": "Agent Monitor",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "taiku",
   "description": "Track AI agent activity across shells",
   "tagline": "See what your AI agents are doing",
-  "categories": ["ai", "monitoring"],
+  "categories": [
+    "ai",
+    "monitoring"
+  ],
   "permissions": [
     "events.subscribe",
     "session.read",
+    "storage.write",
     "agent.events",
     "ui.panel",
     "ui.toolbar.custom",
@@ -37,7 +41,10 @@
       "label": "Toggle Agent Monitor",
       "hotkey": "Cmd+Shift+A",
       "category": "Plugins",
-      "action": { "type": "openPanel", "panelId": "agent-monitor-panel" }
+      "action": {
+        "type": "openPanel",
+        "panelId": "agent-monitor-panel"
+      }
     }
   ]
 }

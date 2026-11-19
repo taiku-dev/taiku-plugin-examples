@@ -1,0 +1,575 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!--
+      A standup drafted from a list. The panel keeps what you add with
+      setUserData. Running /standup in the agent composer (`composerCommands`
+      in the manifest) opens this panel and sends it one `composer_command`
+      event with the words typed after the command, right after it starts if
+      it was closed; the panel answers with fillComposer, a draft of the list
+      once it has read it, and you send it. The host takes the fill only while
+      the composer is empty. No build step and no SDK import, like the other
+      examples here: it speaks the host's message protocol directly.
+    -->
+    <style>
+      :root {
+        color-scheme: dark;
+        --surface: rgb(var(--tk-surface-1, 22 22 25));
+        --hover: rgb(var(--tk-surface-2, 30 30 34));
+        --raised: rgb(var(--tk-surface-3, 44 44 50));
+        --line: rgb(var(--tk-line, 39 39 45));
+        --line-strong: rgb(var(--tk-line-strong, 64 64 72));
+        --text: rgb(var(--tk-ink, 244 244 245));
+        --secondary: rgb(var(--tk-ink-secondary, 205 208 214));
+        --muted: rgb(var(--tk-ink-muted, 139 139 150));
+        --accent: rgb(var(--tk-accent, 46 143 255));
+      }
+      html,
+      body {
+        margin: 0;
+        background: var(--surface);
+        color: var(--text);
+        font: 13px/1.45 var(--tk-ui-font, ui-sans-serif, system-ui, sans-serif);
+      }
+      .empty {
+        margin: 12px;
+        color: var(--muted);
+      }
+      ol {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      /* A row is 36px with its rule: one line of 20px, and its ⋯ inside the
+         row's right padding. A long item wraps. */
+      li {
+        box-sizing: border-box;
+        min-height: 36px;
+        padding: 7px 6px 8px 12px;
+        border-bottom: 1px solid var(--line);
+        line-height: 20px;
+      }
+      form {
+        display: flex;
+        gap: 8px;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line);
+      }
+      input {
+        flex: 1;
+        min-width: 0;
+        background: transparent;
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 4px 8px;
+        font: inherit;
+      }
+      /* Focused, the field draws what the app's fields draw (.tk-input): the
+         accent border at 60% and a 1px accent ring at 30%, not the browser's
+         own ring. The last Remove hands focus here. */
+      input:focus {
+        outline: none;
+        border-color: rgb(var(--tk-accent, 46 143 255) / 0.6);
+        box-shadow: 0 0 0 1px rgb(var(--tk-accent, 46 143 255) / 0.3);
+      }
+      /* Forced colors drop the ring (a shadow) and the border's colour: an
+         outline in the system's colour survives, as the app's does. */
+      @media (forced-colors: active) {
+        input:focus {
+          outline: 2px solid Highlight;
+          outline-offset: 2px;
+        }
+      }
+      .item {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 8px;
+        overflow-wrap: anywhere;
+      }
+      form button {
+        background: transparent;
+        color: var(--muted);
+        border: 0;
+        font: inherit;
+        cursor: pointer;
+      }
+      /* The row's ⋯, named for its item and with no tip: a ⋯'s name is its
+         aria-label alone. On the row under the pointer, holding focus or
+         open; on touch, where nothing hovers, on every row. Remove is a
+         trash item in its menu. */
+      .more-at {
+        position: relative;
+        flex-shrink: 0;
+      }
+      .more {
+        display: grid;
+        place-items: center;
+        width: 20px;
+        height: 20px;
+        padding: 0;
+        border: 0;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+        opacity: 0;
+      }
+      .item:hover .more,
+      .item:focus-within .more,
+      .more[aria-expanded="true"] {
+        opacity: 1;
+      }
+      @media (hover: none) {
+        .more {
+          opacity: 1;
+        }
+      }
+      .more:hover,
+      .more[aria-expanded="true"] {
+        background: var(--hover);
+        color: var(--text);
+      }
+      .more:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 0;
+      }
+      /* The ⋯'s menu, 8px under it, or over it where the panel ends first:
+         a 32px item with its words at 13px, as the app's row menus draw. */
+      .menu {
+        position: absolute;
+        right: 0;
+        top: calc(100% + 8px);
+        z-index: 1;
+        box-sizing: border-box;
+        width: 128px;
+        padding: 4px;
+        border: 1px solid var(--line-strong);
+        border-radius: 6px;
+        background: var(--hover);
+        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4);
+      }
+      .menu.above {
+        top: auto;
+        bottom: calc(100% + 8px);
+      }
+      .menu button {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        height: 32px;
+        padding: 0 8px;
+        border: 0;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--secondary);
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+        outline: none;
+      }
+      .menu button:hover,
+      .menu button:focus-visible {
+        background: var(--raised);
+        color: var(--text);
+      }
+      #status {
+        margin: 0;
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <form id="add">
+      <input id="item" maxlength="200" placeholder="Something you did" />
+      <button type="submit">Add</button>
+    </form>
+    <!-- Under the form, not the list: a phone's sheet is short, and the list
+         would push it out of sight. -->
+    <p id="status" hidden></p>
+    <p class="empty" id="empty">Nothing done yet.</p>
+    <ol id="items"></ol>
+    <script>
+      // The host hands this document a port with init. Requests go on it,
+      // and its answers and events come back on it, re-dispatched here as the
+      // host's messages: a port reaches only the document that received it.
+      let taikuPort = null;
+      function taikuPost(msg) {
+        if (taikuPort) taikuPort.postMessage(msg);
+        else window.parent.postMessage(msg, "*");
+      }
+      window.addEventListener("message", (e) => {
+        if (e.source !== window.parent || e.data?.type !== "taiku:init") return;
+        const port = e.ports && e.ports[0];
+        if (!port) return;
+        if (taikuPort) taikuPort.close();
+        taikuPort = port;
+        // Events move to the port from here on, before any request.
+        port.postMessage({ type: "taiku:port-ready" });
+        port.onmessage = (ev) => {
+          if (ev.data?.type === "taiku:init") return;
+          window.dispatchEvent(
+            new MessageEvent("message", {
+              data: ev.data,
+              source: window.parent,
+            }),
+          );
+        };
+      });
+      const hostWindow = window.parent;
+      const listEl = document.getElementById("items");
+      const emptyEl = document.getElementById("empty");
+      const statusEl = document.getElementById("status");
+      const inputEl = document.getElementById("item");
+
+      // At most this many items, each at most this long.
+      const KEEP = 20;
+      const ITEM_MAX = 200;
+
+      let pluginId = "";
+      let panelId = "";
+      let authToken = "";
+      let nextId = 0;
+      const pending = new Map();
+      let items = [];
+      // A /standup that opened this panel arrives right after init: it is
+      // drafted once the list is read.
+      let listRead;
+      const read = new Promise((done) => (listRead = done));
+
+      function call(method, params) {
+        const id = "op_" + ++nextId;
+        taikuPost({
+          type: "taiku:request",
+          id,
+          pluginId,
+          panelId,
+          authToken,
+          method,
+          params: params || {},
+        });
+        return new Promise((resolve, reject) =>
+          pending.set(id, { resolve, reject }),
+        );
+      }
+
+      const MORE_ICON =
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>';
+      const TRASH_ICON =
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6"/></svg>';
+
+      // The one ⋯ menu open, if any: its row's index, its ⋯ and its menu.
+      let open = null;
+
+      function closeMenu(focusMore) {
+        if (!open) return;
+        const { more, menu } = open;
+        open = null;
+        menu.remove();
+        more.setAttribute("aria-expanded", "false");
+        more.removeAttribute("aria-controls");
+        if (focusMore) more.focus();
+      }
+
+      function openMenu(i, more) {
+        closeMenu(false);
+        const menu = document.createElement("div");
+        menu.className = "menu";
+        menu.id = "menu-" + i;
+        menu.setAttribute("role", "menu");
+        menu.setAttribute("aria-label", more.getAttribute("aria-label"));
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.setAttribute("role", "menuitem");
+        remove.tabIndex = -1;
+        remove.innerHTML = TRASH_ICON + "<span>Remove</span>";
+        remove.addEventListener("click", () => removeItem(i));
+        menu.append(remove);
+        menu.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            closeMenu(true);
+          } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
+            e.preventDefault();
+            remove.focus();
+          } else if (e.key === "Tab") {
+            closeMenu(false);
+          }
+        });
+        more.after(menu);
+        // Over the ⋯ when the panel ends before the menu does.
+        if (
+          menu.getBoundingClientRect().bottom > window.innerHeight &&
+          more.getBoundingClientRect().top > menu.offsetHeight + 8
+        )
+          menu.classList.add("above");
+        more.setAttribute("aria-expanded", "true");
+        more.setAttribute("aria-controls", menu.id);
+        open = { i, more, menu };
+        remove.focus();
+      }
+
+      /** One of the host's motion durations, from its theme, which reduced
+       *  motion makes nothing; a page without the theme takes the same
+       *  values. */
+      function duration(token, fallback) {
+        const raw =
+          getComputedStyle(document.documentElement)
+            .getPropertyValue(token)
+            .trim() || fallback;
+        const ms = parseFloat(raw) * (raw.endsWith("ms") ? 1 : 1000);
+        const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+        return still || !Number.isFinite(ms) ? 0 : ms;
+      }
+
+      /** The host's curve for something coming to rest. */
+      function easeOut() {
+        return (
+          getComputedStyle(document.documentElement)
+            .getPropertyValue("--tk-motion-out")
+            .trim() || "cubic-bezier(0.2, 0, 0, 1)"
+        );
+      }
+
+      /** How the host closes a row: its collapse, on its curve. */
+      function collapse() {
+        return {
+          ms: duration("--tk-motion-collapse", "180ms"),
+          easing: easeOut(),
+        };
+      }
+
+      function removeItem(i) {
+        closeMenu(false);
+        const row = rows()[i];
+        items = items.filter((_, j) => j !== i);
+        // The row closes by height where it stood, and the rows under it
+        // come up with it, rather than jumping a row in one frame. What
+        // closes is the row itself, kept in the list's place for it, unseen
+        // by assistive tech and out of reach, while the list is drawn again
+        // without it, so every row's place in it is right while it closes.
+        const { ms, easing } = collapse();
+        const closes = !!row && ms > 0 && typeof row.animate === "function";
+        if (closes) {
+          row.inert = true;
+          row.setAttribute("aria-hidden", "true");
+          row.removeAttribute("data-testid");
+          row.dataset.closing = "";
+          row.style.overflow = "hidden";
+          row.style.minHeight = "0";
+        }
+        render();
+        // Focus stays in the list: the ⋯ of the row that took this one's
+        // place, or of the one above it, or the field once it is empty.
+        const mores = listEl.querySelectorAll(
+          ":scope > li:not([data-closing]) .more",
+        );
+        (mores[i] || mores[i - 1] || inputEl).focus();
+        void call("setUserData", { key: "items", value: items });
+        if (!closes) return;
+        const style = getComputedStyle(row);
+        // A curve the browser can't read (a theme's own) throws: the row goes
+        // at once rather than stay, closing and out of reach, for good.
+        let close;
+        try {
+          close = row.animate(
+            [
+              {
+                height: row.getBoundingClientRect().height + "px",
+                paddingTop: style.paddingTop,
+                paddingBottom: style.paddingBottom,
+                borderBottomWidth: style.borderBottomWidth,
+              },
+              {
+                height: "0px",
+                paddingTop: "0px",
+                paddingBottom: "0px",
+                borderBottomWidth: "0px",
+              },
+            ],
+            { duration: ms, easing, fill: "forwards" },
+          );
+        } catch {
+          row.remove();
+          showEmpty();
+          return;
+        }
+        const gone = () => {
+          row.remove();
+          showEmpty(true);
+        };
+        close.finished.then(gone, gone);
+      }
+
+      // A press anywhere outside the open menu and its ⋯ closes it.
+      document.addEventListener("pointerdown", (e) => {
+        if (
+          open &&
+          !open.menu.contains(e.target) &&
+          !open.more.contains(e.target)
+        )
+          closeMenu(false);
+      });
+
+      /** The list's own rows, not one closing in its place once removed. */
+      const rows = () =>
+        listEl.querySelectorAll(":scope > li:not([data-closing])");
+
+      /** A row still closing keeps its place among the rows drawn again,
+       *  so a Remove while one closes doesn't cut its close short or move
+       *  it: its place is the rows before it that are still in the list. */
+      function render() {
+        open = null;
+        const closing = [];
+        let before = 0;
+        for (const li of listEl.children) {
+          if (!li.hasAttribute("data-closing")) before += 1;
+          else closing.push({ li, before });
+        }
+        listEl.textContent = "";
+        items.forEach((item, i) => {
+          const li = document.createElement("li");
+          li.className = "item";
+          li.dataset.testid = "item";
+          const text = document.createElement("span");
+          text.textContent = item;
+          const at = document.createElement("span");
+          at.className = "more-at";
+          const more = document.createElement("button");
+          more.type = "button";
+          more.className = "more";
+          more.setAttribute("aria-label", "More for " + item);
+          more.setAttribute("aria-haspopup", "menu");
+          more.setAttribute("aria-expanded", "false");
+          more.innerHTML = MORE_ICON;
+          more.addEventListener("click", () => {
+            if (open && open.more === more) closeMenu(true);
+            else openMenu(i, more);
+          });
+          at.append(more);
+          li.append(text, at);
+          listEl.append(li);
+        });
+        for (const { li, before } of closing)
+          listEl.insertBefore(li, rows()[before] || null);
+        showEmpty();
+      }
+
+      /** The words for an empty list once nothing is left in it, a row
+       *  still closing included: drawn above the list, they would push a
+       *  row closing where it stood down under them. `fade`: the last close
+       *  has just ended, and they come in on the host's enter, in the room
+       *  the row has left, so nothing moves. */
+      function showEmpty(fade = false) {
+        const was = emptyEl.hidden;
+        emptyEl.hidden =
+          items.length > 0 ||
+          listEl.querySelector(":scope > li[data-closing]") !== null;
+        if (!fade || !was || emptyEl.hidden) return;
+        const ms = duration("--tk-motion-enter", "220ms");
+        if (ms <= 0 || typeof emptyEl.animate !== "function") return;
+        // Shown already: a curve the browser can't read leaves them shown at
+        // once.
+        try {
+          emptyEl.animate([{ opacity: 0 }, { opacity: 1 }], {
+            duration: ms,
+            easing: easeOut(),
+          });
+        } catch {}
+      }
+
+      /** What a refused fill means, in this panel's words: the host's own
+       *  are written for the plugin's author. */
+      function refusal(message) {
+        if (/has text in it/.test(message))
+          return "The draft wasn't added: the composer had text. Clear it and run /standup again.";
+        if (/too late/.test(message))
+          return "The draft took too long. Run /standup again.";
+        if (/isn't open/.test(message))
+          return "That /standup was already answered. Run it again.";
+        return "The draft couldn't be added. Run /standup again.";
+      }
+
+      /** The draft: what was done, what the person typed after the command
+       *  as what's next, and room for what's in the way. */
+      function draft(args) {
+        const done = items.length
+          ? items.map((item) => "- " + item).join("\n")
+          : "- ";
+        return (
+          "Standup\nDone:\n" + done + "\nNext: " + args + "\nBlocked: none"
+        );
+      }
+
+      document.getElementById("add").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const item = inputEl.value.trim().slice(0, ITEM_MAX);
+        if (!item) return;
+        items = [...items, item].slice(-KEEP);
+        inputEl.value = "";
+        render();
+        void call("setUserData", { key: "items", value: items });
+      });
+
+      window.addEventListener("message", async (e) => {
+        if (e.source !== hostWindow) return;
+        const d = e.data;
+        if (!d) return;
+        if (d.panelId && panelId && d.panelId !== panelId) return;
+
+        if (d.type === "taiku:init") {
+          pluginId = d.pluginId;
+          panelId = d.panelId || "";
+          authToken = d.authToken || "";
+          for (const [name, value] of Object.entries(d.theme?.tokens || {})) {
+            document.documentElement.style.setProperty(name, value);
+          }
+          try {
+            const kept = await call("getUserData", { key: "items" });
+            if (Array.isArray(kept)) items = kept.map(String).slice(-KEEP);
+          } catch (err) {
+            console.warn("[standup] " + err.message);
+          }
+          listRead();
+          render();
+        } else if (d.type === "taiku:theme") {
+          // The app's theme changed: the whole token set again, applied as at
+          // init.
+          for (const [name, value] of Object.entries(d.theme?.tokens || {})) {
+            document.documentElement.style.setProperty(name, value);
+          }
+        } else if (d.type === "taiku:response" && pending.has(d.id)) {
+          const { resolve, reject } = pending.get(d.id);
+          pending.delete(d.id);
+          if (d.error) reject(new Error(d.error));
+          else resolve(d.result);
+        } else if (
+          d.type === "taiku:event" &&
+          d.event?.type === "composer_command" &&
+          d.event.data?.command === "standup"
+        ) {
+          const { commandId, args } = d.event.data;
+          await read;
+          try {
+            await call("fillComposer", {
+              commandId,
+              text: draft(String(args || "")),
+            });
+            statusEl.hidden = true;
+          } catch (err) {
+            // The host refuses a fill once the composer has text in it.
+            statusEl.textContent = refusal(String(err.message));
+            statusEl.hidden = false;
+          }
+        }
+      });
+    </script>
+  </body>
+</html>

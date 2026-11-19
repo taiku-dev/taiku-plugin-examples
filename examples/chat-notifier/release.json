@@ -1,0 +1,53 @@
+{
+  "format": 1,
+  "manifest": {
+    "id": "example.chat-notifier",
+    "name": "Chat Notifier",
+    "version": "1.1.0",
+    "author": "taiku",
+    "description": "Desktop notifications and toasts on new chat messages",
+    "tagline": "Never miss a chat message",
+    "homepageUrl": "https://taiku.live",
+    "documentationUrl": "https://docs.taiku.live/docs/plugins-and-developers/built-in-plugins#chat-notifier",
+    "supportUrl": "https://github.com/taiku-dev/taiku-plugins/issues",
+    "fundingUrl": "https://github.com/sponsors/nathanzhao",
+    "bugsUrl": "https://github.com/taiku-dev/taiku-plugins/issues",
+    "repository": "taiku-dev/taiku-plugin-examples",
+    "license": "MIT",
+    "keywords": [
+      "taiku",
+      "chat",
+      "notifications",
+      "background"
+    ],
+    "categories": [
+      "collaboration"
+    ],
+    "permissions": [
+      "events.subscribe",
+      "chat.read",
+      "ui.toast",
+      "ui.notify",
+      "audio.play"
+    ],
+    "panels": [
+      {
+        "id": "chat-notifier-bg",
+        "title": "Chat Notifier",
+        "position": "sidebar",
+        "htmlUrl": "panel.html",
+        "background": true
+      }
+    ]
+  },
+  "files": {
+    "README.md": {
+      "sha256": "c125d8d2c9d9dfcfaa594d2e5d4e1c967d31d24664f3d4885c083974cb86686b",
+      "type": "application/octet-stream"
+    },
+    "panel.html": {
+      "sha256": "f40a8eaf5fe29df622331c5cc42f2fd676e8a0a5b957482495f5c07bbc039f23",
+      "type": "text/html"
+    }
+  }
+}

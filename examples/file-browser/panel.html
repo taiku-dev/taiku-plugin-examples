@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
   <head>
     <style>
@@ -8,9 +8,10 @@
         box-sizing: border-box;
       }
       body {
-        background: #18181b;
-        color: #a1a1aa;
-        font-family: system-ui, -apple-system, sans-serif;
+        background: rgb(var(--tk-bg, 10 10 12));
+        color: rgb(var(--tk-ink-secondary, 205 208 214));
+        font-family:
+          Helvetica, "Helvetica Neue", "Nimbus Sans", Arial, sans-serif;
         font-size: 12px;
         padding: 8px;
         overflow-y: auto;
@@ -22,11 +23,11 @@
         align-items: center;
         margin-bottom: 8px;
         padding: 4px 6px;
-        background: #27272a;
+        background: rgb(var(--tk-surface-2, 32 32 37));
         border-radius: 4px;
         font-size: 11px;
         font-family: ui-monospace, monospace;
-        color: #a1a1aa;
+        color: rgb(var(--tk-ink-secondary, 205 208 214));
         overflow-x: auto;
         white-space: nowrap;
         scrollbar-width: none;
@@ -38,7 +39,7 @@
       .path-bar button {
         background: none;
         border: none;
-        color: #60a5fa;
+        color: rgb(var(--tk-accent, 46 143 255));
         cursor: pointer;
         font-size: 11px;
         font-family: inherit;
@@ -62,7 +63,7 @@
         font-size: 11px;
       }
       .file-row:hover {
-        background: #27272a;
+        background: rgb(var(--tk-surface-2, 32 32 37));
       }
       .file-icon {
         width: 14px;
@@ -74,13 +75,13 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        color: #d4d4d8;
+        color: rgb(var(--tk-ink, 244 244 245));
       }
       .dir .file-name {
-        color: #60a5fa;
+        color: rgb(var(--tk-accent, 46 143 255));
       }
       .empty {
-        color: #52525b;
+        color: rgb(var(--tk-ink-faint, 82 82 91));
         text-align: center;
         padding: 24px 0;
         font-size: 11px;
@@ -93,9 +94,38 @@
       <p class="empty">Loading...</p>
     </div>
     <script>
+      // The host hands this document a port with init. Requests go on it,
+      // and its answers and events come back on it, re-dispatched here as the
+      // host's messages: a port reaches only the document that received it.
+      let taikuPort = null;
+      function taikuPost(msg) {
+        if (taikuPort) taikuPort.postMessage(msg);
+        else window.parent.postMessage(msg, "*");
+      }
+      window.addEventListener("message", (e) => {
+        if (e.source !== window.parent || e.data?.type !== "taiku:init") return;
+        const port = e.ports && e.ports[0];
+        if (!port) return;
+        if (taikuPort) taikuPort.close();
+        taikuPort = port;
+        // Events move to the port from here on, before any request.
+        port.postMessage({ type: "taiku:port-ready" });
+        port.onmessage = (ev) => {
+          if (ev.data?.type === "taiku:init") return;
+          window.dispatchEvent(
+            new MessageEvent("message", {
+              data: ev.data,
+              source: window.parent,
+            }),
+          );
+        };
+      });
       let pluginId = "",
+        panelId = "",
+        authToken = "",
         reqId = 0,
         currentPath = ".";
+      const hostWindow = window.parent;
 
       /** Normalize a path: resolve `.`, `..`, collapse `//`, return `.` for root. */
       function normalizePath(p) {
@@ -114,10 +144,15 @@
 
       function send(method, params) {
         const id = "fb_" + ++reqId;
-        window.parent.postMessage(
-          { type: "taiku:request", id, pluginId, method, params },
-          "*",
-        );
+        taikuPost({
+          type: "taiku:request",
+          id,
+          pluginId,
+          panelId,
+          authToken,
+          method,
+          params,
+        });
         return id;
       }
 
@@ -125,7 +160,9 @@
         return new Promise((resolve, reject) => {
           const id = send(method, params);
           const handler = (e) => {
+            if (e.source !== hostWindow) return;
             const d = e.data;
+            if (d?.panelId && panelId && d.panelId !== panelId) return;
             if (d?.type === "taiku:response" && d.id === id) {
               window.removeEventListener("message", handler);
               if (d.error) reject(new Error(d.error));
@@ -143,15 +180,33 @@
       async function listDir(rawPath) {
         const path = normalizePath(rawPath);
         currentPath = path;
+        // Escape before anything reaches innerHTML.
+        //
+        // Every value below is a FILENAME or a path built from filenames, and
+        // the session owner does not choose them - a repo, an npm install or an
+        // upload does. A file called `<img src=x onerror=...>` executed inside
+        // this panel's iframe, which holds the plugin's own fs.read permission,
+        // so a crafted name could read files and ship them out. The quotes
+        // matter as much as the angle brackets: these values are also
+        // interpolated into `data-name="..."` attributes, where a bare `"`
+        // ends the attribute and starts a new one.
+        const esc = (v) =>
+          String(v ?? "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+
         const pathBar = document.getElementById("path-bar");
 
         // Build clickable breadcrumbs: ~ / foo / bar / baz
-        let breadcrumb = `<button data-nav="." title="Session root">~</button>`;
+        let breadcrumb = `<button data-nav="." aria-label="Session root" data-taiku-tip="Session root">~</button>`;
         if (path !== ".") {
           const segments = path.split("/");
           segments.forEach((seg, i) => {
             const partial = segments.slice(0, i + 1).join("/");
-            breadcrumb += ` / <button data-nav="${partial}">${seg}</button>`;
+            breadcrumb += ` / <button data-nav="${esc(partial)}">${esc(seg)}</button>`;
           });
         }
         pathBar.innerHTML = breadcrumb;
@@ -166,7 +221,7 @@
           const parentPath = path === "." ? "." : normalizePath(path + "/..");
           let html = "";
           if (path !== ".") {
-            html += `<div class="file-row dir" data-name=".." data-dir="true" data-path="${parentPath}">
+            html += `<div class="file-row dir" data-name=".." data-dir="true" data-path="${esc(parentPath)}">
         <span class="file-icon">&#128194;</span><span class="file-name">..</span></div>`;
           }
 
@@ -180,12 +235,12 @@
                 const fp = path === "." ? e.name : path + "/" + e.name;
                 return `<div class="file-row ${
                   e.isDir ? "dir" : ""
-                }" data-name="${e.name}" data-dir="${
+                }" data-name="${esc(e.name)}" data-dir="${
                   e.isDir
-                }" data-path="${fp}">
+                }" data-path="${esc(fp)}">
         <span class="file-icon">${
           e.isDir ? "&#128193;" : "&#128196;"
-        }</span><span class="file-name">${e.name}</span></div>`;
+        }</span><span class="file-name">${esc(e.name)}</span></div>`;
               })
               .join("");
           } else {
@@ -197,10 +252,10 @@
           const parentPath = path === "." ? "." : normalizePath(path + "/..");
           let html = "";
           if (path !== ".") {
-            html += `<div class="file-row dir" data-name=".." data-dir="true" data-path="${parentPath}">
+            html += `<div class="file-row dir" data-name=".." data-dir="true" data-path="${esc(parentPath)}">
         <span class="file-icon">&#128194;</span><span class="file-name">..</span></div>`;
           }
-          html += `<p class="empty" style="color:#f87171">${err.message}</p>`;
+          html += `<p class="empty" style="color:rgb(var(--tk-danger, 248 113 113))">${esc(err.message)}</p>`;
           fileList.innerHTML = html;
         }
       }
@@ -227,11 +282,32 @@
       });
 
       window.addEventListener("message", (e) => {
+        if (e.source !== hostWindow) return;
         const d = e.data;
         if (!d) return;
+        if (d.panelId && panelId && d.panelId !== panelId) return;
         if (d.type === "taiku:init") {
+          // Sandboxed with an opaque origin, the panel inherits no CSS from the
+          // app, so the host sends its design tokens as data instead.
+          for (const [name, value] of Object.entries(d.theme?.tokens || {})) {
+            document.documentElement.style.setProperty(name, value);
+          }
           pluginId = d.pluginId;
+          panelId = d.panelId || "";
+          authToken = d.authToken || "";
           listDir(".");
+        }
+      });
+
+      // The app's theme changed while this panel was open: the host sends the
+      // whole token set again, to be applied as at init.
+      window.addEventListener("message", (e) => {
+        if (e.source !== window.parent || e.data?.type !== "taiku:theme")
+          return;
+        for (const [name, value] of Object.entries(
+          e.data.theme?.tokens || {},
+        )) {
+          document.documentElement.style.setProperty(name, value);
         }
       });
     </script>
