@@ -5,7 +5,26 @@
   "author": "taiku",
   "description": "Send commands to terminals and view output — demonstrates terminal read/write and tile APIs",
   "tagline": "Quick command runner across terminals",
-  "categories": ["devtools"],
+  "homepageUrl": "https://taiku.live",
+  "documentationUrl": "https://docs.taiku.live/docs/plugins-and-developers/built-in-plugins#terminal-commander",
+  "supportUrl": "https://github.com/taiku-dev/taiku-plugins/issues",
+  "fundingUrl": "https://github.com/sponsors/nathanzhao",
+  "bugsUrl": "https://github.com/taiku-dev/taiku-plugins/issues",
+  "repository": "taiku-dev/taiku-plugin-examples",
+  "license": "MIT",
+  "keywords": [
+    "taiku",
+    "terminal",
+    "commands",
+    "orchestration"
+  ],
+  "categories": [
+    "devtools"
+  ],
+  "hostPlatforms": [
+    "darwin",
+    "linux"
+  ],
   "permissions": [
     "session.read",
     "terminal.read",

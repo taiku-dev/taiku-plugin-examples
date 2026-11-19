@@ -1,11 +1,26 @@
 {
-  "id": "taiku.chat-notifier",
+  "id": "example.chat-notifier",
   "name": "Chat Notifier",
   "version": "1.1.0",
   "author": "taiku",
   "description": "Desktop notifications and toasts on new chat messages",
   "tagline": "Never miss a chat message",
-  "categories": ["collaboration"],
+  "homepageUrl": "https://taiku.live",
+  "documentationUrl": "https://docs.taiku.live/docs/plugins-and-developers/built-in-plugins#chat-notifier",
+  "supportUrl": "https://github.com/taiku-dev/taiku-plugins/issues",
+  "fundingUrl": "https://github.com/sponsors/nathanzhao",
+  "bugsUrl": "https://github.com/taiku-dev/taiku-plugins/issues",
+  "repository": "taiku-dev/taiku-plugin-examples",
+  "license": "MIT",
+  "keywords": [
+    "taiku",
+    "chat",
+    "notifications",
+    "background"
+  ],
+  "categories": [
+    "collaboration"
+  ],
   "permissions": [
     "events.subscribe",
     "chat.read",

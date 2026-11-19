@@ -1,41 +1,68 @@
-# taiku-plugin-examples
+# taiku plugin examples
 
-Static example plugins and starter templates for taiku.
+Complete plugin folders and a blank static template for taiku. The panels use
+HTML, CSS, and JavaScript directly and need no build step.
 
-## What is here
+This repository is generated from taiku's built-in plugins at source commit
+`a0525f8634d186c5497f87958672b07f8667974d`. Changes and pull requests here are overwritten by the next
+sync from taiku main. Report problems through this repository's issues.
 
-- `examples/file-browser`: browse files from the session working directory
-- `examples/terminal-commander`: inspect shells and send commands
-- `examples/agent-monitor`: shipped taiku plugin for tracking live agent state
-- `examples/chat-notifier`: shipped taiku background plugin for chat alerts
-- `examples/event-log`: shipped taiku panel for browsing live session events
-- `templates/blank-static`: the smallest useful static plugin skeleton
+## Examples
 
-## How to use these
+- [Agent Digest](examples/agent-digest/): What your agents did yesterday: their runs and the verdicts they reached
+- [Agent Monitor](examples/agent-monitor/): Track AI agent activity across shells
+- [Agent Note](examples/agent-note/): Leave a note for one of your agents, which it reads at its next run
+- [Agent Switch](examples/agent-switch/): Turn one of your role agents off, or ask to turn it back on
+- [Break Timer](examples/break-timer/): Reminds you to step away on a fixed interval. One manifest, two surfaces: a panel in the browser and desktop app, and a headless process in the terminal client.
+- [Chat Notifier](examples/chat-notifier/): Desktop notifications and toasts on new chat messages
+- [Event Log](examples/event-log/): Log all session events in real time
+- [File Browser](examples/file-browser/): Browse and open files from the session working directory
+- [Integrations Demo](examples/integrations/): Connect a Composio app via OAuth, list its tools, and run one. Demonstrates the integrations API
+- [Music Player](examples/music-player/): Upload and play music while coding. Sync playback with remote collaborators.
+- [On Call](examples/on-call/): When a page fires, tell an agent and ask you whether to page anyone
+- [Ports](examples/outputs-ports/): Lists the ports open in the session, such as a dev server an agent started, as a section in the agent tile's Outputs. The section appears only while a port is open.
+- [Reply to Note](examples/reply-to-note/): Adds Save to notes to More actions under your agents' replies. Choosing it keeps that one reply in its Notes panel, with the agent that wrote it.
+- [Done list](examples/standup/): Adds /standup to your agent composer. It drafts a standup from the list you keep in its panel, and you send it.
+- [Terminal Commander](examples/terminal-commander/): Send commands to terminals and view output. Demonstrates terminal read/write and tile APIs
 
-Each folder is a complete plugin directory with a `manifest.json` and one or
-more panel files.
+- [Blank static template](templates/blank-static/): a sidebar panel made by
+  taiku's scaffolder, with no SDK or package dependencies.
 
-You can:
+## Install and edit
 
-1. copy a folder locally and load it into taiku as a local plugin
-2. point taiku at a raw `manifest.json` URL from this repo
-3. use the folders as references when building your own hosted plugin repo
+Open Plugins in taiku and choose Submit. In Load Custom Plugin, paste:
 
-These examples intentionally stay close to taiku's built-in static plugins:
+```text
+https://raw.githubusercontent.com/taiku-dev/taiku-plugin-examples/main/examples/file-browser/manifest.json
+```
 
-- no bundler required
-- plain HTML, CSS, and JavaScript
-- direct use of the plugin bridge over `postMessage`
+Choose Load, review the permissions, and confirm the install. The field also
+accepts the full HTTP(S) URL of a folder and appends `/manifest.json`.
 
-The blank template is intentionally minimal, but it still demonstrates the
-important part: taiku sends `taiku:init`, your iframe sends `taiku:request`,
-and taiku answers with `taiku:response`. The example plugins show the same
-bridge pattern in more realistic forms, including a few that are shipped inside
-taiku itself.
+To edit the plugin, copy this folder, change the manifest's `id`, `name`, and
+`author`, then serve the folder over HTTP(S) with cross-origin requests allowed.
+Paste that server's URL into the same field. The web app does not load a local
+folder path or a `file://` URL.
 
-`music-player` is not exported yet because the current built-in includes a
-bundled audio asset, so it is less clean as a bare reference repo entry.
+For a blank plugin, copy `templates/blank-static/` and follow its README.
+The published copies of `taiku.*` plugins use `example.*` IDs so they can be
+installed alongside the originals. If that ID is already installed from
+another URL, uninstall that copy first or give your copy a new ID. taiku refuses
+an installed ID from a different source.
 
-If you want typed helpers or tests, add `@taiku/plugin-sdk` on top of the
-template.
+## Host protocol
+
+Wait for `taiku:init` from `window.parent` and check the message's `source`.
+Every `taiku:request` must carry the `pluginId`, `panelId`, and `authToken`
+from init, plus a unique request `id`, a `method`, and its `params`.
+taiku answers with `taiku:response` and the same request ID.
+
+Init can supply a MessagePort in `event.ports[0]`. Listen on that port and
+send `taiku:port-ready` on it before making requests so events use it too.
+Requests can also use `window.parent.postMessage`; those answers use the window.
+Apply the theme tokens from init and from later `taiku:theme` messages.
+
+Read the [full plugin guide](https://docs.taiku.live/docs/plugins-and-developers/building-plugins).
+To list a finished plugin in the marketplace, submit a pull request to
+[community-plugins.json](https://github.com/taiku-dev/taiku-plugins/blob/main/community-plugins.json)
+in `taiku-dev/taiku-plugins`.

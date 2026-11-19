@@ -1,0 +1,48 @@
+{
+  "id": "example.agent-switch",
+  "name": "Agent Switch",
+  "version": "0.1.0",
+  "author": "taiku",
+  "description": "Turn one of your role agents off, or ask to turn it back on",
+  "tagline": "An on and off switch for a role agent",
+  "homepageUrl": "https://taiku.live",
+  "repository": "taiku-dev/taiku-plugin-examples",
+  "license": "MIT",
+  "keywords": [
+    "taiku",
+    "agents",
+    "switch",
+    "role"
+  ],
+  "categories": [
+    "devtools"
+  ],
+  "permissions": [
+    "agents.read",
+    "agents.manage",
+    "ui.panel",
+    "ui.toolbar.custom"
+  ],
+  "panels": [
+    {
+      "id": "agent-switch-panel",
+      "title": "Agent Switch",
+      "position": "sidebar",
+      "htmlUrl": "panel.html",
+      "defaultWidth": 320,
+      "defaultHeight": 360
+    }
+  ],
+  "surfaces": [
+    "web",
+    "phone"
+  ],
+  "toolbarActions": [
+    {
+      "id": "open-agent-switch",
+      "label": "Agent Switch",
+      "icon": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M18.36 6.64a9 9 0 1 1-12.73 0\"/><line x1=\"12\" y1=\"2\" x2=\"12\" y2=\"12\"/></svg>",
+      "panelId": "agent-switch-panel"
+    }
+  ]
+}

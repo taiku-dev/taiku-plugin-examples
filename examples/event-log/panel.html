@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
   <head>
     <style>
@@ -8,9 +8,10 @@
         box-sizing: border-box;
       }
       body {
-        background: #18181b;
-        color: #a1a1aa;
-        font-family: system-ui, -apple-system, sans-serif;
+        background: rgb(var(--tk-bg, 10 10 12));
+        color: rgb(var(--tk-ink-secondary, 205 208 214));
+        font-family:
+          Helvetica, "Helvetica Neue", "Nimbus Sans", Arial, sans-serif;
         font-size: 11px;
         padding: 0;
         overflow: hidden;
@@ -20,47 +21,51 @@
       }
       .toolbar {
         flex-shrink: 0;
-        background: #18181b;
-        border-bottom: 1px solid #27272a;
+        background: rgb(var(--tk-bg, 10 10 12));
+        border-bottom: 1px solid rgb(var(--tk-line, 38 38 43));
         padding: 4px 8px;
         display: flex;
         gap: 4px;
         align-items: center;
         z-index: 1;
-        overflow-x: auto;
-        white-space: nowrap;
-        scrollbar-width: none;
-        -ms-overflow-style: none;
+        /* WRAP, don't scroll. Eleven category chips do not fit the panel in its
+           docked width (measured 338px), and with `overflow-x: auto` plus a
+           hidden scrollbar the row was simply cut off mid-word - "Terminal"
+           through "Plugin" were unreachable with no affordance saying they
+           existed. Wrapping costs one row of height and makes every filter
+           visible at any width. */
+        flex-wrap: wrap;
+        row-gap: 4px;
       }
       .toolbar::-webkit-scrollbar {
         display: none;
       }
       .toolbar button {
-        background: #27272a;
-        border: 1px solid #3f3f46;
-        color: #a1a1aa;
+        background: rgb(var(--tk-surface-2, 32 32 37));
+        border: 1px solid rgb(var(--tk-line-strong, 64 64 72));
+        color: rgb(var(--tk-ink-secondary, 205 208 214));
         font-size: 10px;
         padding: 2px 8px;
         border-radius: 4px;
         cursor: pointer;
       }
       .toolbar button:hover {
-        background: #3f3f46;
-        color: #e4e4e7;
+        background: rgb(var(--tk-surface-3, 44 44 50));
+        color: rgb(var(--tk-ink, 244 244 245));
       }
       .toolbar button.active {
-        background: #4f46e5;
-        border-color: #6366f1;
-        color: #e4e4e7;
+        background: rgb(var(--tk-accent-fill, 26 95 191));
+        border-color: rgb(var(--tk-accent, 46 143 255));
+        color: rgb(var(--tk-ink, 244 244 245));
       }
       .sep {
         width: 1px;
         height: 14px;
-        background: #3f3f46;
+        background: rgb(var(--tk-line-strong, 64 64 72));
         margin: 0 2px;
       }
       .count {
-        color: #71717a;
+        color: rgb(var(--tk-ink-muted, 139 139 150));
         font-size: 10px;
         margin-left: auto;
       }
@@ -71,20 +76,20 @@
       }
       .entry {
         padding: 3px 8px;
-        border-bottom: 1px solid #1f1f23;
+        border-bottom: 1px solid rgb(var(--tk-line-soft, 30 30 35));
         display: flex;
         gap: 6px;
         align-items: baseline;
         font-family: ui-monospace, monospace;
       }
       .entry:hover {
-        background: #1f1f23;
+        background: rgb(var(--tk-surface-1, 22 22 25));
       }
       .entry.hidden {
         display: none;
       }
       .ts {
-        color: #52525b;
+        color: rgb(var(--tk-ink-faint, 82 82 91));
         flex-shrink: 0;
         font-size: 10px;
       }
@@ -97,55 +102,111 @@
         font-weight: 600;
       }
       .badge.terminal {
-        background: #1e3a5f;
-        color: #60a5fa;
+        background: color-mix(
+          in srgb,
+          rgb(var(--tk-accent, 46 143 255)) 18%,
+          rgb(var(--tk-surface-1, 22 22 25))
+        );
+        color: rgb(var(--tk-accent, 46 143 255));
       }
       .badge.agent {
-        background: #2d1a3a;
-        color: #a78bfa;
-      }
-      .badge.chat {
-        background: #3b1f54;
-        color: #c084fc;
+        background: color-mix(
+          in srgb,
+          rgb(var(--tk-info, 167 139 250)) 18%,
+          rgb(var(--tk-surface-1, 22 22 25))
+        );
+        color: rgb(var(--tk-info, 167 139 250));
       }
       .badge.user {
-        background: #1a3a2a;
-        color: #4ade80;
+        background: color-mix(
+          in srgb,
+          rgb(var(--tk-ok, 74 222 128)) 18%,
+          rgb(var(--tk-surface-1, 22 22 25))
+        );
+        color: rgb(var(--tk-ok, 74 222 128));
       }
       .badge.shell {
-        background: #3a2a1a;
-        color: #fb923c;
+        background: color-mix(
+          in srgb,
+          #fb923c 18%,
+          rgb(var(--tk-surface-1, 22 22 25))
+        );
+        color: color-mix(
+          in srgb,
+          #fb923c var(--tk-hue-mix, 100%),
+          rgb(var(--tk-ink, 244 244 245))
+        );
       }
       .badge.plugin {
-        background: #1a2a3a;
-        color: #38bdf8;
+        background: color-mix(
+          in srgb,
+          #38bdf8 18%,
+          rgb(var(--tk-surface-1, 22 22 25))
+        );
+        color: color-mix(
+          in srgb,
+          #38bdf8 var(--tk-hue-mix, 100%),
+          rgb(var(--tk-ink, 244 244 245))
+        );
       }
       .badge.tunnel {
-        background: #3a1a2a;
-        color: #fb7185;
+        background: color-mix(
+          in srgb,
+          #fb7185 18%,
+          rgb(var(--tk-surface-1, 22 22 25))
+        );
+        color: color-mix(
+          in srgb,
+          #fb7185 var(--tk-hue-mix, 100%),
+          rgb(var(--tk-ink, 244 244 245))
+        );
       }
       .badge.layout {
-        background: #1a2a1a;
-        color: #86efac;
+        background: color-mix(
+          in srgb,
+          #86efac 18%,
+          rgb(var(--tk-surface-1, 22 22 25))
+        );
+        color: color-mix(
+          in srgb,
+          #86efac var(--tk-hue-mix, 100%),
+          rgb(var(--tk-ink, 244 244 245))
+        );
       }
       .badge.tile {
-        background: #2a2a1a;
-        color: #fde68a;
+        background: color-mix(
+          in srgb,
+          #fde68a 18%,
+          rgb(var(--tk-surface-1, 22 22 25))
+        );
+        color: color-mix(
+          in srgb,
+          #fde68a var(--tk-hue-mix, 100%),
+          rgb(var(--tk-ink, 244 244 245))
+        );
       }
       .badge.workspace {
-        background: #1a1a2a;
-        color: #93c5fd;
+        background: color-mix(
+          in srgb,
+          #93c5fd 18%,
+          rgb(var(--tk-surface-1, 22 22 25))
+        );
+        color: color-mix(
+          in srgb,
+          #93c5fd var(--tk-hue-mix, 100%),
+          rgb(var(--tk-ink, 244 244 245))
+        );
       }
       .badge.default {
-        background: #27272a;
-        color: #a1a1aa;
+        background: rgb(var(--tk-surface-2, 32 32 37));
+        color: rgb(var(--tk-ink-secondary, 205 208 214));
       }
       .data {
-        color: #d4d4d8;
+        color: rgb(var(--tk-ink, 244 244 245));
         word-break: break-all;
       }
       .empty {
-        color: #52525b;
+        color: rgb(var(--tk-ink-faint, 82 82 91));
         text-align: center;
         padding: 24px 0;
       }
@@ -156,7 +217,7 @@
       <button id="clear">Clear</button>
       <label
         style="
-          color: #71717a;
+          color: rgb(var(--tk-ink-muted, 139 139 150));
           font-size: 10px;
           display: flex;
           align-items: center;
@@ -166,27 +227,51 @@
           type="checkbox"
           id="auto"
           checked
-          style="accent-color: #6366f1"
+          style="accent-color: rgb(var(--tk-accent, 46 143 255))"
         />
         Auto</label
       >
       <div class="sep"></div>
       <button class="filter active" data-cat="all">All</button>
       <button class="filter" data-cat="agent">Agent</button>
-      <button class="filter" data-cat="chat">Chat</button>
       <button class="filter" data-cat="user">User</button>
       <button class="filter" data-cat="shell">Shell</button>
       <button class="filter" data-cat="terminal">Terminal</button>
       <button class="filter" data-cat="layout">Layout</button>
       <button class="filter" data-cat="tile">Tile</button>
       <button class="filter" data-cat="workspace">Workspace</button>
-      <button class="filter" data-cat="tunnel">Tunnel</button>
       <button class="filter" data-cat="plugin">Plugin</button>
       <span class="count" id="count">0 events</span>
     </div>
     <div id="log"></div>
     <p id="empty" class="empty">Waiting for events...</p>
     <script>
+      // The host hands this document a port with init. Requests go on it,
+      // and its answers and events come back on it, re-dispatched here as the
+      // host's messages: a port reaches only the document that received it.
+      let taikuPort = null;
+      function taikuPost(msg) {
+        if (taikuPort) taikuPort.postMessage(msg);
+        else window.parent.postMessage(msg, "*");
+      }
+      window.addEventListener("message", (e) => {
+        if (e.source !== window.parent || e.data?.type !== "taiku:init") return;
+        const port = e.ports && e.ports[0];
+        if (!port) return;
+        if (taikuPort) taikuPort.close();
+        taikuPort = port;
+        // Events move to the port from here on, before any request.
+        port.postMessage({ type: "taiku:port-ready" });
+        port.onmessage = (ev) => {
+          if (ev.data?.type === "taiku:init") return;
+          window.dispatchEvent(
+            new MessageEvent("message", {
+              data: ev.data,
+              source: window.parent,
+            }),
+          );
+        };
+      });
       const log = document.getElementById("log"),
         empty = document.getElementById("empty"),
         countEl = document.getElementById("count");
@@ -194,7 +279,10 @@
       let count = 0,
         activeFilter = "all",
         pluginId = "",
+        panelId = "",
+        authToken = "",
         reqId = 0;
+      const hostWindow = window.parent;
 
       // Dedup: track last event fingerprint per type to suppress identical consecutive events.
       const lastEventKey = new Map();
@@ -213,16 +301,15 @@
 
       function send(method, params) {
         if (!pluginId) return;
-        window.parent.postMessage(
-          {
-            type: "taiku:request",
-            id: "el_" + ++reqId,
-            pluginId,
-            method,
-            params,
-          },
-          "*",
-        );
+        taikuPost({
+          type: "taiku:request",
+          id: "el_" + ++reqId,
+          pluginId,
+          panelId,
+          authToken,
+          method,
+          params,
+        });
       }
 
       document.getElementById("clear").onclick = () => {
@@ -247,20 +334,32 @@
             );
           });
           updateCount();
+          // Re-apply autoscroll. Changing the filter changes which rows are
+          // visible, but scrollTop stays where the old set left it - so
+          // switching back to All landed on whatever happened to be at that
+          // offset, often events from minutes earlier, while the newest rows
+          // sat below the fold. Autoscroll only ran when a new event arrived.
+          if (autoEl.checked) log.scrollTop = log.scrollHeight;
         });
       });
 
       function classify(t) {
         if (t.startsWith("agent.")) return "agent";
         if (t.includes("agent")) return "agent";
-        if (t.includes("chat")) return "chat";
+        // No "chat" category: this plugin does not hold `chat.read`, so the
+        // host no longer delivers chat events to it (they carry message
+        // bodies, and the pull twin `getChat` has always required that
+        // permission). Categorising for an event that cannot arrive would
+        // leave a filter tab that is permanently empty.
         if (t.includes("user")) return "user";
         if (t.includes("shell") && !t.includes("terminal")) return "shell";
         if (t.includes("terminal")) return "terminal";
         if (t.includes("layout")) return "layout";
         if (t.includes("tile")) return "tile";
         if (t.includes("workspace")) return "workspace";
-        if (t.includes("tunnel")) return "tunnel";
+        // No "tunnel" category either: `tunnel_changed` is the only tunnel
+        // event and it now needs `tunnel.read` (it carries the port list),
+        // which this plugin does not hold.
         if (t.includes("plugin")) return "plugin";
         return "default";
       }
@@ -280,28 +379,28 @@
         if (type === "user_joined") {
           let s = esc(data.userName || "?");
           if (data.device)
-            s += ` <span style="color:#71717a">(${esc(data.device)})</span>`;
+            s += ` <span style="color:rgb(var(--tk-ink-muted, 139 139 150))">(${esc(data.device)})</span>`;
           if (data.canWrite === false)
-            s += ` <span style="color:#52525b">read-only</span>`;
+            s += ` <span style="color:rgb(var(--tk-ink-faint, 82 82 91))">read-only</span>`;
           return s;
         }
         if (type === "user_left") {
           let s = esc(data.userName || `User ${data.userId ?? "?"}`);
           if (data.device)
-            s += ` <span style="color:#71717a">(${esc(data.device)})</span>`;
+            s += ` <span style="color:rgb(var(--tk-ink-muted, 139 139 150))">(${esc(data.device)})</span>`;
           return s;
         }
         if (type === "user_focused") {
           let s = esc(data.userName || "?");
           if (data.device)
-            s += ` <span style="color:#71717a">(${esc(data.device)})</span>`;
+            s += ` <span style="color:rgb(var(--tk-ink-muted, 139 139 150))">(${esc(data.device)})</span>`;
           s += ` → Shell #${data.focus ?? "?"}`;
           return s;
         }
         if (type === "user_unfocused") {
           let s = esc(data.userName || "?");
           if (data.device)
-            s += ` <span style="color:#71717a">(${esc(data.device)})</span>`;
+            s += ` <span style="color:rgb(var(--tk-ink-muted, 139 139 150))">(${esc(data.device)})</span>`;
           s += ` unfocused`;
           if (data.previousFocus != null) s += ` Shell #${data.previousFocus}`;
           return s;
@@ -315,7 +414,7 @@
             : "";
           const agent = data.agent || "";
           const prefix = sid
-            ? `<span style="color:#71717a">${esc(agent)} ${sid}</span> `
+            ? `<span style="color:rgb(var(--tk-ink-muted, 139 139 150))">${esc(agent)} ${sid}</span> `
             : "";
 
           if (sub === "user_message")
@@ -325,21 +424,21 @@
           if (sub === "thinking")
             return (
               prefix +
-              `<span style="color:#818cf8">thinking</span> ${esc(
+              `<span style="color:rgb(var(--tk-info, 167 139 250))">thinking</span> ${esc(
                 (data.text || "").slice(0, 80),
               )}`
             );
           if (sub === "tool_call")
             return (
               prefix +
-              `<span style="color:#60a5fa">${esc(data.tool_name || "?")}</span>`
+              `<span style="color:rgb(var(--tk-accent, 46 143 255))">${esc(data.tool_name || "?")}</span>`
             );
           if (sub === "tool_result")
             return (
               prefix +
               `${
                 data.is_error
-                  ? '<span style="color:#f87171">error</span>'
+                  ? '<span style="color:rgb(var(--tk-danger, 248 113 113))">error</span>'
                   : "ok"
               } ${esc((data.output || "").slice(0, 80))}`
             );
@@ -383,18 +482,11 @@
           if (sub === "interrupt")
             return (
               prefix +
-              `<span style="color:#fbbf24">interrupted</span>${
+              `<span style="color:rgb(var(--tk-warn, 252 211 77))">interrupted</span>${
                 data.tool_name ? " " + esc(data.tool_name) : ""
               }`
             );
           return prefix + JSON.stringify(data).slice(0, 150);
-        }
-
-        // Chat
-        if (type === "chat") {
-          return `<span style="color:#c084fc">${esc(
-            data.userName || "?",
-          )}</span> ${esc(data.message || "")}`;
         }
 
         // Shells
@@ -409,10 +501,19 @@
       }
 
       window.addEventListener("message", (e) => {
+        if (e.source !== hostWindow) return;
         const d = e.data;
         if (!d) return;
+        if (d.panelId && panelId && d.panelId !== panelId) return;
         if (d.type === "taiku:init") {
+          // Sandboxed with an opaque origin, the panel inherits no CSS from the
+          // app, so the host sends its design tokens as data instead.
+          for (const [name, value] of Object.entries(d.theme?.tokens || {})) {
+            document.documentElement.style.setProperty(name, value);
+          }
           pluginId = d.pluginId;
+          panelId = d.panelId || "";
+          authToken = d.authToken || "";
           send("subscribeEvents");
           return;
         }
@@ -447,6 +548,18 @@
         count++;
         updateCount();
         if (autoEl.checked) log.scrollTop = log.scrollHeight;
+      });
+
+      // The app's theme changed while this panel was open: the host sends the
+      // whole token set again, to be applied as at init.
+      window.addEventListener("message", (e) => {
+        if (e.source !== window.parent || e.data?.type !== "taiku:theme")
+          return;
+        for (const [name, value] of Object.entries(
+          e.data.theme?.tokens || {},
+        )) {
+          document.documentElement.style.setProperty(name, value);
+        }
       });
     </script>
   </body>

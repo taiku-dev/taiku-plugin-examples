@@ -5,7 +5,22 @@
   "author": "taiku",
   "description": "Browse and open files from the session working directory",
   "tagline": "Quick file explorer for your session",
-  "categories": ["devtools"],
+  "homepageUrl": "https://taiku.live",
+  "documentationUrl": "https://docs.taiku.live/docs/plugins-and-developers/built-in-plugins#file-browser",
+  "supportUrl": "https://github.com/taiku-dev/taiku-plugins/issues",
+  "fundingUrl": "https://github.com/sponsors/nathanzhao",
+  "bugsUrl": "https://github.com/taiku-dev/taiku-plugins/issues",
+  "repository": "taiku-dev/taiku-plugin-examples",
+  "license": "MIT",
+  "keywords": [
+    "taiku",
+    "files",
+    "filesystem",
+    "navigation"
+  ],
+  "categories": [
+    "devtools"
+  ],
   "permissions": [
     "session.read",
     "fs.list",

@@ -1,0 +1,341 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!--
+      Notes kept from agents' replies. The plugin's action under a reply
+      (`replyActions` in the manifest) sends this panel one `reply_action`
+      event with that reply; the panel keeps it with setUserData and lists
+      what it kept, newest first, once the host says it is kept, and says so
+      here when it isn't. No build step and no SDK import, like the other
+      examples here: it speaks the host's message protocol directly.
+    -->
+    <style>
+      :root {
+        color-scheme: dark;
+        --surface: rgb(var(--tk-surface-1, 22 22 25));
+        --hover: rgb(var(--tk-surface-2, 30 30 34));
+        --line: rgb(var(--tk-line, 39 39 45));
+        --text: rgb(var(--tk-ink, 244 244 245));
+        --muted: rgb(var(--tk-ink-muted, 139 139 150));
+        --danger: rgb(var(--tk-danger, 248 113 113));
+        --accent: rgb(var(--tk-accent, 46 143 255));
+      }
+      html,
+      body {
+        margin: 0;
+        background: var(--surface);
+        color: var(--text);
+        font: 13px/1.45 var(--tk-ui-font, ui-sans-serif, system-ui, sans-serif);
+      }
+      .empty {
+        margin: 12px;
+        color: var(--muted);
+      }
+      ol {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      /* A note is two lines, 48px with its rule: who and when over the
+         reply's first line. Pressing it shows the whole reply. */
+      .note {
+        display: block;
+        box-sizing: border-box;
+        width: 100%;
+        padding: 6px 12px 5px;
+        border: 0;
+        border-bottom: 1px solid var(--line);
+        background: none;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+      .note:hover {
+        background: var(--hover);
+      }
+      .note:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: -2px;
+      }
+      .who {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 16px;
+      }
+      .agent {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .at {
+        flex-shrink: 0;
+        white-space: nowrap;
+      }
+      .text {
+        display: block;
+        line-height: 20px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .note[aria-expanded="true"] .text {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      /* Not kept yet: the row is there, muted, with no time. */
+      .note[data-state="saving"] .text {
+        color: var(--muted);
+      }
+      .note[data-state="failed"] .at {
+        color: var(--danger);
+      }
+    </style>
+  </head>
+  <body>
+    <p class="empty" id="empty">
+      Save an agent's reply from the ⋯ under it to keep it here.
+    </p>
+    <ol id="notes"></ol>
+    <script>
+      // The host hands this document a port with init. Requests go on it,
+      // and its answers and events come back on it, re-dispatched here as the
+      // host's messages: a port reaches only the document that received it.
+      let taikuPort = null;
+      function taikuPost(msg) {
+        if (taikuPort) taikuPort.postMessage(msg);
+        else window.parent.postMessage(msg, "*");
+      }
+      window.addEventListener("message", (e) => {
+        if (e.source !== window.parent || e.data?.type !== "taiku:init") return;
+        const port = e.ports && e.ports[0];
+        if (!port) return;
+        if (taikuPort) taikuPort.close();
+        taikuPort = port;
+        // Events move to the port from here on, before any request.
+        port.postMessage({ type: "taiku:port-ready" });
+        port.onmessage = (ev) => {
+          if (ev.data?.type === "taiku:init") return;
+          window.dispatchEvent(
+            new MessageEvent("message", {
+              data: ev.data,
+              source: window.parent,
+            }),
+          );
+        };
+      });
+      const hostWindow = window.parent;
+      const listEl = document.getElementById("notes");
+      const emptyEl = document.getElementById("empty");
+
+      // At most this many notes, newest first, each at most this long.
+      const KEEP = 50;
+      const TEXT_MAX = 4000;
+      // All the notes are one stored value, and taiku keeps a value of at
+      // most 64 KiB of JSON: past this, the oldest notes go, as past KEEP.
+      const VALUE_MAX = 63 * 1024;
+      const bytes = (value) =>
+        new TextEncoder().encode(JSON.stringify(value)).length;
+      // A request the host hasn't answered by then has failed.
+      const ANSWER_MS = 10000;
+
+      let pluginId = "";
+      let panelId = "";
+      let authToken = "";
+      let nextId = 0;
+      const pending = new Map();
+
+      function call(method, params) {
+        const id = "op_" + ++nextId;
+        taikuPost({
+          type: "taiku:request",
+          id,
+          pluginId,
+          panelId,
+          authToken,
+          method,
+          params: params || {},
+        });
+        return new Promise((resolve, reject) => {
+          pending.set(id, { resolve, reject });
+          setTimeout(() => {
+            if (pending.delete(id)) reject(new Error("taiku didn't answer"));
+          }, ANSWER_MS);
+        });
+      }
+
+      // What is kept, as stored; and the replies pressed but not kept:
+      // still saving, or refused, with why. Those last only until the panel
+      // reloads.
+      let notes = [];
+      let unsaved = [];
+      // Notes shown whole, by key.
+      const open = new Set();
+      const key = (note) => note.at + ":" + (note.runId || "");
+
+      // The list is drawn afresh on every change; the note that had focus
+      // keeps it, so a press from the keyboard, or a save landing, never
+      // drops it. Only while focus is in this page: a page can still name an
+      // activeElement after focus has left it, and a save landing must not
+      // pull focus out of wherever the person is typing.
+      function render() {
+        const focused = document.hasFocus()
+          ? document.activeElement?.closest?.(".note")?.dataset.key
+          : undefined;
+        listEl.textContent = "";
+        const rows = [...unsaved, ...notes].sort((a, b) => b.at - a.at);
+        emptyEl.hidden = rows.length > 0;
+        for (const note of rows) {
+          const li = document.createElement("li");
+          const row = document.createElement("button");
+          row.type = "button";
+          row.className = "note";
+          row.dataset.testid = "note";
+          row.dataset.state = note.state || "kept";
+          row.dataset.key = key(note);
+          row.setAttribute("aria-expanded", String(open.has(key(note))));
+          row.addEventListener("click", () => {
+            const k = key(note);
+            if (!open.delete(k)) open.add(k);
+            render();
+          });
+          const who = document.createElement("span");
+          who.className = "who";
+          const agent = document.createElement("span");
+          agent.className = "agent";
+          agent.textContent = note.agent;
+          const at = document.createElement("span");
+          at.className = "at";
+          at.textContent =
+            note.state === "saving"
+              ? ""
+              : note.state === "failed"
+                ? "Not kept: " + note.reason
+                : new Date(note.at).toLocaleString([], {
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  });
+          who.append(agent, at);
+          const text = document.createElement("span");
+          text.className = "text";
+          text.textContent = note.text;
+          row.append(who, text);
+          li.append(row);
+          listEl.append(li);
+          if (row.dataset.key === focused) row.focus({ preventScroll: true });
+        }
+      }
+
+      // Why the host didn't keep it, in a few words: its own answer is a
+      // sentence for whoever wrote the plugin.
+      function why(message) {
+        if (/storage is full|as many plugin settings/i.test(message))
+          return "storage full";
+        // The list is kept under the cap, so this is the list that's full.
+        if (/too large/i.test(message)) return "notes full";
+        if (/rate limit/i.test(message)) return "too many at once";
+        if (/didn't answer/.test(message)) return "no answer";
+        return "couldn't save";
+      }
+
+      // A pressed reply is listed at once, muted and with no time, and is
+      // kept once the host answers; if the host refuses, its row says so
+      // where the time goes. Saves go one at a time, each onto what the
+      // last one kept.
+      let saving = Promise.resolve();
+      // Whether what is kept has been read: a save never goes over notes this
+      // page couldn't read.
+      let loaded = false;
+      async function load() {
+        try {
+          const kept = await call("getUserData", { key: "notes" });
+          notes = Array.isArray(kept) ? kept.slice(0, KEEP) : [];
+          loaded = true;
+        } catch (err) {
+          console.warn("[reply-to-note] " + err.message);
+        }
+        render();
+      }
+      function keep(reply) {
+        const note = {
+          text: String(reply.text).slice(0, TEXT_MAX),
+          agent: String(reply.agent?.name || reply.agent?.slug || "Agent"),
+          runId: reply.runId || null,
+          at: Date.now(),
+        };
+        const row = { ...note, state: "saving" };
+        unsaved = [row, ...unsaved];
+        render();
+        saving = saving.then(() => save(note, row));
+        return saving;
+      }
+      async function save(note, row) {
+        if (!loaded) await load();
+        if (!loaded) {
+          row.state = "failed";
+          row.reason = "couldn't save";
+          render();
+          return;
+        }
+        const next = [note, ...notes].slice(0, KEEP);
+        while (next.length > 1 && bytes(next) > VALUE_MAX) next.pop();
+        try {
+          await call("setUserData", { key: "notes", value: next });
+        } catch (err) {
+          console.warn("[reply-to-note] " + err.message);
+          row.state = "failed";
+          row.reason = why(String(err.message));
+          render();
+          return;
+        }
+        notes = next;
+        unsaved = unsaved.filter((r) => r !== row);
+        render();
+      }
+
+      window.addEventListener("message", async (e) => {
+        if (e.source !== hostWindow) return;
+        const d = e.data;
+        if (!d) return;
+        if (d.panelId && panelId && d.panelId !== panelId) return;
+
+        if (d.type === "taiku:init") {
+          pluginId = d.pluginId;
+          panelId = d.panelId || "";
+          authToken = d.authToken || "";
+          for (const [name, value] of Object.entries(d.theme?.tokens || {})) {
+            document.documentElement.style.setProperty(name, value);
+          }
+          // Read what is kept before any press is saved onto it: the press
+          // that opened this panel arrives right behind init.
+          saving = saving.then(load);
+        } else if (d.type === "taiku:theme") {
+          // The app's theme changed: the whole token set again, applied as at
+          // init.
+          for (const [name, value] of Object.entries(d.theme?.tokens || {})) {
+            document.documentElement.style.setProperty(name, value);
+          }
+        } else if (d.type === "taiku:response" && pending.has(d.id)) {
+          const { resolve, reject } = pending.get(d.id);
+          pending.delete(d.id);
+          if (d.error) reject(new Error(d.error));
+          else resolve(d.result);
+        } else if (
+          d.type === "taiku:event" &&
+          d.event?.type === "reply_action" &&
+          d.event.data?.actionId === "save"
+        ) {
+          await keep(d.event.data.reply);
+        }
+      });
+    </script>
+  </body>
+</html>

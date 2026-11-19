@@ -1,10 +1,33 @@
 # File Browser
 
-Browse the session working directory from a sidebar panel.
+Browse and open files from the session working directory
 
-What it demonstrates:
+Plugin ID: `example.file-browser`. Version: `0.2.0`.
 
-- `fs.list` to enumerate files and directories
-- `ui.open` to open a file in the host
-- `ui.toast` for lightweight feedback
-- a simple breadcrumb UI built entirely with the bridge and static HTML
+## Permissions
+
+- `session.read`
+- `fs.list`
+- `ui.open`
+- `ui.panel`
+- `ui.toolbar.custom`
+- `ui.toast`
+
+## Install
+
+Open Plugins in taiku and choose Submit. In Load Custom Plugin, paste:
+
+```text
+https://raw.githubusercontent.com/taiku-dev/taiku-plugin-examples/main/examples/file-browser/manifest.json
+```
+
+Choose Load, review the permissions, and confirm the install. The field also
+accepts the full HTTP(S) URL of a folder and appends `/manifest.json`.
+
+To edit the plugin, copy this folder, change the manifest's `id`, `name`, and
+`author`, then serve the folder over HTTP(S) with cross-origin requests allowed.
+Paste that server's URL into the same field. The web app does not load a local
+folder path or a `file://` URL.
+
+See the [plugin guide](https://docs.taiku.live/docs/plugins-and-developers/building-plugins)
+for the bridge methods and permission descriptions.

@@ -1,10 +1,36 @@
 # Terminal Commander
 
-Inspect available shells and send commands to the selected terminal.
+Send commands to terminals and view output. Demonstrates terminal read/write and tile APIs
 
-What it demonstrates:
+Plugin ID: `example.terminal-commander`. Version: `0.1.0`.
 
-- `terminal.read` and `terminal.write`
-- `session.read` for shell/session state
-- `workspace.read` and `workspace.write` for shell ownership flows
-- a richer static panel without adding a bundler
+## Permissions
+
+- `session.read`
+- `terminal.read`
+- `terminal.write`
+- `workspace.read`
+- `workspace.write`
+- `ui.panel`
+- `ui.toolbar.custom`
+- `ui.toast`
+- `events.subscribe`
+
+## Install
+
+Open Plugins in taiku and choose Submit. In Load Custom Plugin, paste:
+
+```text
+https://raw.githubusercontent.com/taiku-dev/taiku-plugin-examples/main/examples/terminal-commander/manifest.json
+```
+
+Choose Load, review the permissions, and confirm the install. The field also
+accepts the full HTTP(S) URL of a folder and appends `/manifest.json`.
+
+To edit the plugin, copy this folder, change the manifest's `id`, `name`, and
+`author`, then serve the folder over HTTP(S) with cross-origin requests allowed.
+Paste that server's URL into the same field. The web app does not load a local
+folder path or a `file://` URL.
+
+See the [plugin guide](https://docs.taiku.live/docs/plugins-and-developers/building-plugins)
+for the bridge methods and permission descriptions.

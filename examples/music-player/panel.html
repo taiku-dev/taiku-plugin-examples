@@ -1,0 +1,1359 @@
+<!doctype html>
+<html>
+  <head>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: rgb(var(--tk-bg, 10 10 12));
+        color: rgb(var(--tk-ink-secondary, 205 208 214));
+        font-family:
+          Helvetica, "Helvetica Neue", "Nimbus Sans", Arial, sans-serif;
+        font-size: 12px;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      /* ── Mini player ── */
+      .mini-player {
+        display: none;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 8px;
+        flex-shrink: 0;
+        height: 100%;
+      }
+      body.mini .mini-player {
+        display: flex;
+      }
+      body.mini .full-player {
+        display: none !important;
+      }
+      .mini-name {
+        color: rgb(var(--tk-ink, 244 244 245));
+        font-size: 10px;
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        position: relative;
+        min-width: 0;
+        flex: 1;
+      }
+      .mini-name.scrolling .track-name-inner {
+        animation: marquee var(--marquee-dur, 6s) linear infinite alternate;
+      }
+      .mini-name.none {
+        color: rgb(var(--tk-ink-faint, 82 82 91));
+        font-style: italic;
+      }
+      .mini-btn {
+        background: none;
+        border: none;
+        color: rgb(var(--tk-ink-secondary, 205 208 214));
+        cursor: pointer;
+        padding: 2px;
+        border-radius: 3px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: color 0.1s;
+        flex-shrink: 0;
+      }
+      .mini-btn:hover {
+        color: rgb(var(--tk-ink, 244 244 245));
+      }
+      .mini-play {
+        width: 22px;
+        height: 22px;
+        background: rgb(var(--tk-ink, 244 244 245));
+        border: none;
+        border-radius: 50%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: rgb(var(--tk-bg, 10 10 12));
+        flex-shrink: 0;
+      }
+      .mini-play:hover {
+        background: rgb(var(--tk-ink-secondary, 205 208 214));
+      }
+      .mini-progress {
+        flex: 1;
+        height: 3px;
+        background: rgb(var(--tk-surface-2, 32 32 37));
+        border-radius: 2px;
+        cursor: pointer;
+        min-width: 30px;
+      }
+      .mini-progress-fill {
+        height: 100%;
+        background: rgb(var(--tk-accent, 46 143 255));
+        border-radius: 2px;
+        transition: none;
+      }
+      .mini-vol {
+        width: 40px;
+        height: 3px;
+        -webkit-appearance: none;
+        appearance: none;
+        background: rgb(var(--tk-surface-2, 32 32 37));
+        border-radius: 2px;
+        outline: none;
+        flex-shrink: 0;
+      }
+      .mini-vol::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 8px;
+        height: 8px;
+        background: rgb(var(--tk-ink-muted, 139 139 150));
+        border-radius: 50%;
+        cursor: pointer;
+      }
+
+      /* ── Full player ── */
+      .now-playing {
+        padding: 8px 10px;
+        border-bottom: 1px solid rgb(var(--tk-line, 38 38 43));
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        flex-shrink: 0;
+      }
+      .track-name {
+        color: rgb(var(--tk-ink, 244 244 245));
+        font-weight: 600;
+        font-size: 11px;
+        white-space: nowrap;
+        overflow: hidden;
+        position: relative;
+        flex: 1;
+        min-width: 0;
+      }
+      .track-name-inner {
+        display: inline-block;
+        white-space: nowrap;
+      }
+      .track-name.scrolling .track-name-inner {
+        animation: marquee var(--marquee-dur, 8s) linear infinite alternate;
+      }
+      @keyframes marquee {
+        0%,
+        15% {
+          transform: translateX(0);
+        }
+        85%,
+        100% {
+          transform: translateX(var(--marquee-dist, -50px));
+        }
+      }
+      .track-none {
+        color: rgb(var(--tk-ink-faint, 82 82 91));
+        font-style: italic;
+        font-weight: 400;
+      }
+      .controls-row {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+      }
+      .ctrl-btn {
+        background: none;
+        border: none;
+        color: rgb(var(--tk-ink-muted, 139 139 150));
+        cursor: pointer;
+        padding: 3px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: color 0.1s;
+      }
+      .ctrl-btn:hover {
+        color: rgb(var(--tk-ink, 244 244 245));
+      }
+      .ctrl-btn.active {
+        color: rgb(var(--tk-accent, 46 143 255));
+      }
+      .play-btn {
+        width: 28px;
+        height: 28px;
+        background: rgb(var(--tk-ink, 244 244 245));
+        border: none;
+        border-radius: 50%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: rgb(var(--tk-bg, 10 10 12));
+        margin: 0 2px;
+      }
+      .play-btn:hover {
+        background: rgb(var(--tk-ink-secondary, 205 208 214));
+      }
+      .vol-group {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        margin-left: auto;
+      }
+      .vol-icon {
+        color: rgb(var(--tk-ink-faint, 82 82 91));
+        flex-shrink: 0;
+        display: flex;
+      }
+      .volume-slider {
+        width: 50px;
+        height: 3px;
+        -webkit-appearance: none;
+        appearance: none;
+        background: rgb(var(--tk-surface-2, 32 32 37));
+        border-radius: 2px;
+        outline: none;
+      }
+      .volume-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 8px;
+        height: 8px;
+        background: rgb(var(--tk-ink-muted, 139 139 150));
+        border-radius: 50%;
+        cursor: pointer;
+      }
+      .progress-row {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .progress-time {
+        font-size: 9px;
+        color: rgb(var(--tk-ink-faint, 82 82 91));
+        font-variant-numeric: tabular-nums;
+        min-width: 28px;
+        text-align: center;
+      }
+      .progress-bar {
+        flex: 1;
+        height: 3px;
+        background: rgb(var(--tk-surface-2, 32 32 37));
+        border-radius: 2px;
+        cursor: pointer;
+      }
+      .progress-fill {
+        height: 100%;
+        background: rgb(var(--tk-accent, 46 143 255));
+        border-radius: 2px;
+        transition: none;
+      }
+
+      /* ── Sync group bar ── */
+      .sync-bar {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 12px;
+        border-bottom: 1px solid rgb(var(--tk-line, 38 38 43));
+        font-size: 10px;
+        flex-shrink: 0;
+      }
+      .sync-toggle {
+        background: none;
+        border: 1px solid rgb(var(--tk-line-strong, 64 64 72));
+        color: rgb(var(--tk-ink-secondary, 205 208 214));
+        font-size: 10px;
+        padding: 2px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.1s;
+        flex-shrink: 0;
+      }
+      .sync-toggle:hover {
+        background: rgb(var(--tk-surface-2, 32 32 37));
+        color: rgb(var(--tk-ink, 244 244 245));
+      }
+      .sync-toggle.on {
+        border-color: rgb(var(--tk-accent, 46 143 255));
+        color: rgb(var(--tk-accent, 46 143 255));
+      }
+      .sync-users {
+        color: rgb(var(--tk-ink-faint, 82 82 91));
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex: 1;
+        min-width: 0;
+      }
+      .sync-users .name {
+        color: rgb(var(--tk-ink-secondary, 205 208 214));
+      }
+
+      /* ── Playlist ── */
+      .playlist-header {
+        display: flex;
+        align-items: center;
+        padding: 5px 10px;
+        border-bottom: 1px solid rgb(var(--tk-line, 38 38 43));
+        gap: 6px;
+        flex-shrink: 0;
+      }
+      .playlist-title {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: rgb(var(--tk-ink-muted, 139 139 150));
+        font-weight: 600;
+      }
+      .playlist-count {
+        font-size: 10px;
+        color: rgb(var(--tk-ink-faint, 82 82 91));
+      }
+      .upload-btn {
+        margin-left: auto;
+        background: rgb(var(--tk-surface-2, 32 32 37));
+        border: 1px solid rgb(var(--tk-line-strong, 64 64 72));
+        color: rgb(var(--tk-ink-secondary, 205 208 214));
+        font-size: 10px;
+        padding: 3px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background 0.1s;
+      }
+      .upload-btn:hover {
+        background: rgb(var(--tk-surface-3, 44 44 50));
+        color: rgb(var(--tk-ink, 244 244 245));
+      }
+      .playlist {
+        flex: 1;
+        overflow-y: auto;
+        padding: 4px 0;
+        scrollbar-width: thin;
+        scrollbar-color: rgb(var(--tk-line-strong, 64 64 72)) transparent;
+      }
+      .track-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        cursor: pointer;
+        transition: background 0.1s;
+      }
+      .track-row:hover {
+        background: rgb(var(--tk-surface-2, 32 32 37));
+      }
+      .track-row.active {
+        background: color-mix(
+          in srgb,
+          rgb(var(--tk-accent, 46 143 255)) 18%,
+          rgb(var(--tk-surface-1, 22 22 25))
+        );
+      }
+      .track-row .idx {
+        font-size: 10px;
+        color: rgb(var(--tk-ink-faint, 82 82 91));
+        width: 16px;
+        text-align: right;
+        flex-shrink: 0;
+      }
+      .track-row.active .idx {
+        color: rgb(var(--tk-accent, 46 143 255));
+      }
+      .track-row .name {
+        flex: 1;
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: rgb(var(--tk-ink, 244 244 245));
+        font-size: 11px;
+      }
+      .track-row.active .name {
+        color: rgb(var(--tk-ink, 244 244 245));
+        font-weight: 500;
+      }
+      .track-row .del-btn {
+        opacity: 0;
+        background: none;
+        border: none;
+        color: rgb(var(--tk-ink-muted, 139 139 150));
+        cursor: pointer;
+        padding: 2px;
+        font-size: 14px;
+        line-height: 1;
+        transition: opacity 0.1s;
+      }
+      .track-row:hover .del-btn {
+        opacity: 1;
+      }
+      .track-row .del-btn:hover {
+        color: rgb(var(--tk-danger, 248 113 113));
+      }
+      .drop-zone {
+        border: 1px dashed rgb(var(--tk-line-strong, 64 64 72));
+        border-radius: 6px;
+        margin: 6px 10px;
+        padding: 12px;
+        text-align: center;
+        color: rgb(var(--tk-ink-faint, 82 82 91));
+        font-size: 10px;
+        transition:
+          border-color 0.2s,
+          color 0.2s;
+      }
+      .drop-zone.over {
+        border-color: rgb(var(--tk-accent, 46 143 255));
+        color: rgb(var(--tk-ink-secondary, 205 208 214));
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ── Mini player ── -->
+    <div class="mini-player" id="mini-player">
+      <span class="mini-name none" id="mini-name"
+        ><span class="track-name-inner" id="mini-name-inner"
+          >No track</span
+        ></span
+      >
+      <button class="mini-btn" id="mini-prev" aria-label="Previous">
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.5"
+        >
+          <polygon points="19 20 9 12 19 4 19 20" />
+          <line x1="5" y1="19" x2="5" y2="5" />
+        </svg>
+      </button>
+      <button class="mini-play" id="mini-play" aria-label="Play">
+        <svg
+          id="mini-play-icon"
+          width="10"
+          height="10"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+        >
+          <polygon points="5 3 19 12 5 21 5 3" />
+        </svg>
+        <svg
+          id="mini-pause-icon"
+          width="10"
+          height="10"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+          style="display: none"
+        >
+          <rect x="6" y="4" width="4" height="16" />
+          <rect x="14" y="4" width="4" height="16" />
+        </svg>
+      </button>
+      <button class="mini-btn" id="mini-next" aria-label="Next">
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.5"
+        >
+          <polygon points="5 4 15 12 5 20 5 4" />
+          <line x1="19" y1="5" x2="19" y2="19" />
+        </svg>
+      </button>
+      <div class="mini-progress" id="mini-progress">
+        <div
+          class="mini-progress-fill"
+          id="mini-progress-fill"
+          style="width: 0%"
+        ></div>
+      </div>
+      <input
+        type="range"
+        class="mini-vol"
+        id="mini-vol"
+        min="0"
+        max="100"
+        value="80"
+        aria-label="Volume"
+      />
+    </div>
+
+    <!-- ── Full player ── -->
+    <div class="full-player">
+      <div class="now-playing">
+        <div class="controls-row">
+          <button
+            class="ctrl-btn"
+            id="shuffle-btn"
+            aria-label="Shuffle"
+            data-taiku-tip="Shuffle off"
+            aria-pressed="false"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <polyline points="16 3 21 3 21 8" />
+              <line x1="4" y1="20" x2="21" y2="3" />
+              <polyline points="21 16 21 21 16 21" />
+              <line x1="15" y1="15" x2="21" y2="21" />
+              <line x1="4" y1="4" x2="9" y2="9" />
+            </svg>
+          </button>
+          <button class="ctrl-btn" id="prev-btn" aria-label="Previous">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <polygon points="19 20 9 12 19 4 19 20" />
+              <line x1="5" y1="19" x2="5" y2="5" />
+            </svg>
+          </button>
+          <button class="play-btn" id="play-btn" aria-label="Play">
+            <svg
+              id="play-icon"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+            >
+              <polygon points="6 3 20 12 6 21 6 3" />
+            </svg>
+            <svg
+              id="pause-icon"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              style="display: none"
+            >
+              <rect x="5" y="4" width="4" height="16" />
+              <rect x="15" y="4" width="4" height="16" />
+            </svg>
+          </button>
+          <button class="ctrl-btn" id="next-btn" aria-label="Next">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <polygon points="5 4 15 12 5 20 5 4" />
+              <line x1="19" y1="5" x2="19" y2="19" />
+            </svg>
+          </button>
+          <button
+            class="ctrl-btn"
+            id="repeat-btn"
+            aria-label="Repeat"
+            data-taiku-tip="Repeat off"
+            aria-pressed="false"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <polyline points="17 1 21 5 17 9" />
+              <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+              <polyline points="7 23 3 19 7 15" />
+              <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+            </svg>
+          </button>
+          <div class="track-name" id="track-name">
+            <span class="track-name-inner" id="track-name-inner"
+              ><span class="track-none">No track</span></span
+            >
+          </div>
+          <div class="vol-group">
+            <span class="vol-icon"
+              ><svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /></svg
+            ></span>
+            <input
+              type="range"
+              class="volume-slider"
+              id="volume"
+              min="0"
+              max="100"
+              value="80"
+            />
+          </div>
+        </div>
+        <div class="progress-row">
+          <span class="progress-time" id="cur-time">0:00</span>
+          <div class="progress-bar" id="progress-bar">
+            <div
+              class="progress-fill"
+              id="progress-fill"
+              style="width: 0%"
+            ></div>
+          </div>
+          <span class="progress-time" id="dur-time">0:00</span>
+        </div>
+      </div>
+
+      <div class="sync-bar">
+        <button class="sync-toggle" id="sync-btn">sync</button>
+        <span class="sync-users" id="sync-users"></span>
+      </div>
+
+      <div class="playlist-header">
+        <span class="playlist-title">Playlist</span>
+        <span class="playlist-count" id="count">0 tracks</span>
+        <button class="upload-btn" id="upload-btn">+ Upload</button>
+      </div>
+      <div class="playlist" id="playlist">
+        <div class="drop-zone" id="drop-zone">
+          Drop audio files here or click Upload
+        </div>
+      </div>
+    </div>
+    <input
+      type="file"
+      id="file-input"
+      accept="audio/*"
+      multiple
+      style="display: none"
+    />
+
+    <script>
+      // The host hands this document a port with init. Requests go on it,
+      // and its answers and events come back on it, re-dispatched here as the
+      // host's messages: a port reaches only the document that received it.
+      let taikuPort = null;
+      function taikuPost(msg) {
+        if (taikuPort) taikuPort.postMessage(msg);
+        else window.parent.postMessage(msg, "*");
+      }
+      window.addEventListener("message", (e) => {
+        if (e.source !== window.parent || e.data?.type !== "taiku:init") return;
+        const port = e.ports && e.ports[0];
+        if (!port) return;
+        if (taikuPort) taikuPort.close();
+        taikuPort = port;
+        // Events move to the port from here on, before any request.
+        port.postMessage({ type: "taiku:port-ready" });
+        port.onmessage = (ev) => {
+          if (ev.data?.type === "taiku:init") return;
+          window.dispatchEvent(
+            new MessageEvent("message", {
+              data: ev.data,
+              source: window.parent,
+            }),
+          );
+        };
+      });
+      let pluginId = "",
+        sessionId = "",
+        panelId = "",
+        authToken = "",
+        reqId = 0;
+      const hostWindow = window.parent;
+      let tracks = [];
+      let currentIdx = -1;
+      let isPlaying = false;
+      let shuffle = false;
+      let repeat = false;
+      let minimized = false;
+      const audio = new Audio();
+      audio.volume = 0.8;
+      const objectUrlCache = new Map();
+
+      // ── Sync group state ──
+      let syncEnabled = false;
+      let syncMembers = new Map(); // name -> lastSeen timestamp
+      let myName = "";
+      const SYNC_STALE_MS = 15000;
+
+      const MINI_HEIGHT = 36;
+      const FULL_HEIGHT = 340;
+      let canWrite = true; // false for readers — disables upload, delete, skip, play
+
+      function applyReadOnly() {
+        document.getElementById("upload-btn").style.display = "none";
+        document.getElementById("play-btn").style.opacity = "0.3";
+        document.getElementById("play-btn").style.pointerEvents = "none";
+        document.getElementById("prev-btn").style.opacity = "0.3";
+        document.getElementById("prev-btn").style.pointerEvents = "none";
+        document.getElementById("next-btn").style.opacity = "0.3";
+        document.getElementById("next-btn").style.pointerEvents = "none";
+        document.getElementById("mini-play").style.opacity = "0.3";
+        document.getElementById("mini-play").style.pointerEvents = "none";
+        document.getElementById("mini-prev").style.opacity = "0.3";
+        document.getElementById("mini-prev").style.pointerEvents = "none";
+        document.getElementById("mini-next").style.opacity = "0.3";
+        document.getElementById("mini-next").style.pointerEvents = "none";
+      }
+
+      // ── Messaging ──
+      function send(method, params) {
+        return new Promise((resolve) => {
+          const id = "mp_" + ++reqId;
+          taikuPost({
+            type: "taiku:request",
+            id,
+            pluginId,
+            panelId,
+            authToken,
+            method,
+            params,
+          });
+          const handler = (e) => {
+            if (e.source !== hostWindow) return;
+            const d = e.data;
+            if (d?.panelId && panelId && d.panelId !== panelId) return;
+            if (d?.type === "taiku:response" && d.id === id) {
+              window.removeEventListener("message", handler);
+              resolve(d.error ? null : d.result);
+            }
+          };
+          window.addEventListener("message", handler);
+          setTimeout(() => {
+            window.removeEventListener("message", handler);
+            resolve(null);
+          }, 30000);
+        });
+      }
+
+      function broadcast(eventType, data) {
+        send("broadcastEvent", { eventType, data });
+      }
+
+      // ── Mini/expand ──
+      function setMinimized(val) {
+        minimized = val;
+        document.body.classList.toggle("mini", minimized);
+        updateMini();
+        if (panelId) {
+          send("resizePanel", {
+            panelId,
+            height: minimized ? MINI_HEIGHT : FULL_HEIGHT,
+          });
+          send("setHeaderVisible", { panelId, visible: !minimized });
+          send("setHeaderButtons", {
+            panelId,
+            buttons: [
+              { id: "toggle-mini", label: minimized ? "full" : "mini" },
+            ],
+          });
+        }
+      }
+
+      function updateMini() {
+        const nameEl = document.getElementById("mini-name");
+        const nameInner = document.getElementById("mini-name-inner");
+        if (currentIdx >= 0 && tracks[currentIdx]) {
+          nameInner.textContent = cleanName(tracks[currentIdx].name);
+          nameEl.classList.remove("none");
+        } else {
+          nameInner.textContent = "No track";
+          nameEl.classList.add("none");
+        }
+        requestAnimationFrame(updateMarquee);
+        document.getElementById("mini-play-icon").style.display = isPlaying
+          ? "none"
+          : "";
+        document.getElementById("mini-pause-icon").style.display = isPlaying
+          ? ""
+          : "none";
+        sayPlay(document.getElementById("mini-play"));
+      }
+
+      // ── Storage ──
+      // The playlist is the session's own uploads; the plugin ships no track.
+      async function loadTracks() {
+        try {
+          const files = await send("storage.listFiles", {});
+          tracks = (files || []).filter((f) =>
+            /\.(mp3|m4a|ogg|wav|flac|aac|webm|opus)$/i.test(f.name),
+          );
+          const liveNames = new Set(tracks.map((t) => t.name));
+          for (const name of objectUrlCache.keys()) {
+            if (!liveNames.has(name)) revokeTrackUrl(name);
+          }
+        } catch (e) {
+          console.error("[music] loadTracks:", e);
+          tracks = [];
+        }
+        renderPlaylist();
+        updateMini();
+        if (!minimized && panelId) {
+          requestAnimationFrame(() =>
+            send("resizePanel", { panelId, height: "fit" }),
+          );
+        }
+      }
+
+      function sanitizeFilename(name) {
+        return name.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/__+/g, "_");
+      }
+
+      function guessAudioMime(name) {
+        const lower = String(name || "").toLowerCase();
+        if (lower.endsWith(".mp3")) return "audio/mpeg";
+        if (lower.endsWith(".m4a") || lower.endsWith(".aac"))
+          return "audio/mp4";
+        if (lower.endsWith(".ogg") || lower.endsWith(".opus"))
+          return "audio/ogg";
+        if (lower.endsWith(".wav")) return "audio/wav";
+        if (lower.endsWith(".flac")) return "audio/flac";
+        if (lower.endsWith(".webm")) return "audio/webm";
+        return "application/octet-stream";
+      }
+
+      function base64ToBytes(base64) {
+        const raw = atob(base64);
+        const bytes = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+        return bytes;
+      }
+
+      function revokeTrackUrl(name) {
+        const url = objectUrlCache.get(name);
+        if (!url) return;
+        URL.revokeObjectURL(url);
+        objectUrlCache.delete(name);
+      }
+
+      async function audioUrl(track) {
+        const cached = objectUrlCache.get(track.name);
+        if (cached) return cached;
+        const result = await send("storage.readFile", { filename: track.name });
+        if (!result?.base64) return null;
+        const blob = new Blob([base64ToBytes(result.base64)], {
+          type: guessAudioMime(track.name),
+        });
+        const url = URL.createObjectURL(blob);
+        objectUrlCache.set(track.name, url);
+        return url;
+      }
+
+      async function uploadFile(file) {
+        const safeName = sanitizeFilename(file.name);
+        const buf = await file.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i++)
+          binary += String.fromCharCode(bytes[i]);
+        try {
+          await send("storage.writeFile", {
+            filename: safeName,
+            content: btoa(binary),
+            base64: true,
+          });
+          send("showToast", {
+            message: `Uploaded ${safeName}`,
+            kind: "success",
+            duration: 2000,
+          });
+          await loadTracks();
+        } catch (e) {
+          send("showToast", {
+            message: `Upload failed: ${e.message}`,
+            kind: "error",
+            duration: 3000,
+          });
+        }
+      }
+
+      // ── Playback ──
+      async function playTrack(idx) {
+        if (idx < 0 || idx >= tracks.length) return;
+        currentIdx = idx;
+        const url = await audioUrl(tracks[idx]);
+        if (currentIdx !== idx) return;
+        if (!url) {
+          send("showToast", {
+            message: `Failed to load ${tracks[idx].name}`,
+            kind: "error",
+            duration: 3000,
+          });
+          return;
+        }
+        audio.src = url;
+        audio.play().catch(() => {});
+        isPlaying = true;
+        updatePlayBtn();
+        updateMini();
+        renderPlaylist();
+        document.getElementById("track-name-inner").textContent = cleanName(
+          tracks[idx].name,
+        );
+        requestAnimationFrame(updateMarquee);
+        if (syncEnabled) broadcastSyncState("play");
+      }
+
+      function togglePlay() {
+        if (currentIdx < 0 && tracks.length > 0) {
+          playTrack(0);
+          return;
+        }
+        if (isPlaying) {
+          audio.pause();
+          isPlaying = false;
+          if (syncEnabled) broadcastSyncState("pause");
+        } else {
+          audio.play().catch(() => {});
+          isPlaying = true;
+          if (syncEnabled) broadcastSyncState("play");
+        }
+        updatePlayBtn();
+        updateMini();
+      }
+
+      function nextTrack() {
+        if (tracks.length === 0) return;
+        playTrack(
+          shuffle
+            ? Math.floor(Math.random() * tracks.length)
+            : (currentIdx + 1) % tracks.length,
+        );
+      }
+
+      function prevTrack() {
+        if (tracks.length === 0) return;
+        if (audio.currentTime > 3) {
+          audio.currentTime = 0;
+          return;
+        }
+        playTrack(
+          shuffle
+            ? Math.floor(Math.random() * tracks.length)
+            : (currentIdx - 1 + tracks.length) % tracks.length,
+        );
+      }
+
+      // ── Sync group ──
+      function broadcastSyncState(action) {
+        broadcast("music." + action, {
+          track: currentIdx >= 0 ? tracks[currentIdx].name : null,
+          trackIdx: currentIdx,
+          position: audio.currentTime,
+          timestamp: Date.now(),
+          userName: myName,
+        });
+      }
+
+      function broadcastSyncJoin() {
+        broadcast("music.sync_join", {
+          userName: myName,
+          timestamp: Date.now(),
+        });
+      }
+
+      function broadcastSyncLeave() {
+        broadcast("music.sync_leave", {
+          userName: myName,
+          timestamp: Date.now(),
+        });
+      }
+
+      async function handleSyncEvent(sub, data) {
+        const sender = data.userName || "?";
+
+        if (sub === "sync_join") {
+          syncMembers.set(sender, Date.now());
+          renderSyncUsers();
+          // If we're playing, send current state so the new joiner syncs up.
+          if (syncEnabled && isPlaying) {
+            setTimeout(() => broadcastSyncState("play"), 200);
+          }
+          return;
+        }
+        if (sub === "sync_leave") {
+          syncMembers.delete(sender);
+          renderSyncUsers();
+          return;
+        }
+        // Heartbeat — keep member alive.
+        if (sender && sender !== myName) syncMembers.set(sender, Date.now());
+        renderSyncUsers();
+
+        if (!syncEnabled) return;
+
+        if (sub === "play" && data.track) {
+          const idx = tracks.findIndex((t) => t.name === data.track);
+          if (idx < 0) return;
+          const drift = (Date.now() - (data.timestamp || Date.now())) / 1000;
+          if (currentIdx !== idx) {
+            currentIdx = idx;
+            const url = await audioUrl(tracks[idx]);
+            if (!url || currentIdx !== idx) return;
+            audio.src = url;
+            document.getElementById("track-name-inner").textContent = cleanName(
+              tracks[idx].name,
+            );
+            requestAnimationFrame(updateMarquee);
+            renderPlaylist();
+            updateMini();
+          }
+          audio.currentTime = Math.max(0, (data.position || 0) + drift);
+          audio.play().catch(() => {});
+          isPlaying = true;
+          updatePlayBtn();
+          updateMini();
+        } else if (sub === "pause") {
+          audio.pause();
+          isPlaying = false;
+          updatePlayBtn();
+          updateMini();
+        } else if (sub === "seek" && data.position != null) {
+          audio.currentTime = data.position;
+        }
+      }
+
+      function renderSyncUsers() {
+        const el = document.getElementById("sync-users");
+        // Prune stale members.
+        const now = Date.now();
+        for (const [name, ts] of syncMembers) {
+          if (now - ts > SYNC_STALE_MS && name !== myName)
+            syncMembers.delete(name);
+        }
+        const names = [];
+        if (syncEnabled) names.push("you");
+        for (const name of syncMembers.keys()) {
+          if (name !== myName) names.push(name);
+        }
+        if (names.length === 0) {
+          el.textContent = "";
+        } else {
+          el.innerHTML = names
+            .map((n) => `<span class="name">${esc(n)}</span>`)
+            .join(", ");
+        }
+      }
+
+      // Send periodic heartbeat so others know we're still in the group.
+      setInterval(() => {
+        if (syncEnabled)
+          broadcast("music.sync_join", {
+            userName: myName,
+            timestamp: Date.now(),
+          });
+      }, 10000);
+
+      // ── UI helpers ──
+      function cleanName(n) {
+        return n.replace(/\.[^.]+$/, "").replace(/[-_]/g, " ");
+      }
+
+      function updateMarquee() {
+        // Full player
+        const nameEl = document.getElementById("track-name");
+        const innerEl = document.getElementById("track-name-inner");
+        if (nameEl && innerEl) {
+          const overflow = innerEl.scrollWidth - nameEl.clientWidth;
+          if (overflow > 2) {
+            nameEl.classList.add("scrolling");
+            nameEl.style.setProperty("--marquee-dist", `-${overflow}px`);
+            nameEl.style.setProperty(
+              "--marquee-dur",
+              `${Math.max(4, overflow / 15)}s`,
+            );
+          } else {
+            nameEl.classList.remove("scrolling");
+          }
+        }
+        // Mini player
+        const miniEl = document.getElementById("mini-name");
+        const miniInner = document.getElementById("mini-name-inner");
+        if (miniEl && miniInner) {
+          const overflow = miniInner.scrollWidth - miniEl.clientWidth;
+          if (overflow > 2) {
+            miniEl.classList.add("scrolling");
+            miniEl.style.setProperty("--marquee-dist", `-${overflow}px`);
+            miniEl.style.setProperty(
+              "--marquee-dur",
+              `${Math.max(3, overflow / 15)}s`,
+            );
+          } else {
+            miniEl.classList.remove("scrolling");
+          }
+        }
+      }
+      function fmtTime(s) {
+        if (!s || !isFinite(s)) return "0:00";
+        return (
+          Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0")
+        );
+      }
+      function updatePlayBtn() {
+        document.getElementById("play-icon").style.display = isPlaying
+          ? "none"
+          : "";
+        document.getElementById("pause-icon").style.display = isPlaying
+          ? ""
+          : "none";
+        sayPlay(document.getElementById("play-btn"));
+      }
+      // Play's name follows its icon: Pause while it plays.
+      function sayPlay(button) {
+        button.setAttribute("aria-label", isPlaying ? "Pause" : "Play");
+      }
+      function esc(s) {
+        return String(s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function renderPlaylist() {
+        const el = document.getElementById("playlist");
+        document.getElementById("count").textContent =
+          tracks.length + " track" + (tracks.length === 1 ? "" : "s");
+        if (tracks.length === 0) {
+          el.innerHTML =
+            '<div class="drop-zone" id="drop-zone">Drop audio files here or click Upload</div>';
+          setupDropZone();
+          return;
+        }
+        let html = "";
+        tracks.forEach((t, i) => {
+          const active = i === currentIdx ? " active" : "";
+          const playing = i === currentIdx && isPlaying ? "&#9654; " : "";
+          const delBtn = canWrite
+            ? `<button class="del-btn" data-del="${i}" aria-label="Remove">&times;</button>`
+            : "";
+          html += `<div class="track-row${active}" data-idx="${i}">
+            <span class="idx">${playing || i + 1}</span>
+            <span class="name" data-taiku-tip="${esc(cleanName(t.name))}">${esc(
+              cleanName(t.name),
+            )}</span>
+            ${delBtn}
+          </div>`;
+        });
+        el.innerHTML = html;
+      }
+
+      function setupDropZone() {
+        const dz = document.getElementById("drop-zone");
+        if (!dz) return;
+        dz.addEventListener("dragover", (e) => {
+          e.preventDefault();
+          dz.classList.add("over");
+        });
+        dz.addEventListener("dragleave", () => dz.classList.remove("over"));
+        dz.addEventListener("drop", (e) => {
+          e.preventDefault();
+          dz.classList.remove("over");
+          for (const f of e.dataTransfer.files) {
+            if (
+              f.type.startsWith("audio/") ||
+              /\.(mp3|m4a|ogg|wav|flac|aac|webm|opus)$/i.test(f.name)
+            )
+              uploadFile(f);
+          }
+        });
+      }
+
+      // ── Progress ──
+      audio.addEventListener("timeupdate", () => {
+        if (!audio.duration) return;
+        const pct = (audio.currentTime / audio.duration) * 100;
+        document.getElementById("progress-fill").style.width = pct + "%";
+        document.getElementById("mini-progress-fill").style.width = pct + "%";
+        document.getElementById("cur-time").textContent = fmtTime(
+          audio.currentTime,
+        );
+        document.getElementById("dur-time").textContent = fmtTime(
+          audio.duration,
+        );
+      });
+      audio.addEventListener("ended", () => {
+        if (repeat) {
+          audio.currentTime = 0;
+          audio.play();
+          return;
+        }
+        nextTrack();
+      });
+      document.getElementById("progress-bar").addEventListener("click", (e) => {
+        if (!audio.duration) return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        audio.currentTime =
+          ((e.clientX - rect.left) / rect.width) * audio.duration;
+        if (syncEnabled) broadcastSyncState("seek");
+      });
+      document
+        .getElementById("mini-progress")
+        .addEventListener("click", (e) => {
+          if (!audio.duration) return;
+          const rect = e.currentTarget.getBoundingClientRect();
+          audio.currentTime =
+            ((e.clientX - rect.left) / rect.width) * audio.duration;
+          if (syncEnabled) broadcastSyncState("seek");
+        });
+
+      // ── Event wiring ──
+      document.getElementById("play-btn").onclick = togglePlay;
+      document.getElementById("mini-play").onclick = togglePlay;
+      document.getElementById("next-btn").onclick = nextTrack;
+      document.getElementById("mini-next").onclick = nextTrack;
+      document.getElementById("prev-btn").onclick = prevTrack;
+      document.getElementById("mini-prev").onclick = prevTrack;
+      // A toggle's icon shows its state only by colour, so its tip says it.
+      function sayToggle(id, name, on) {
+        const button = document.getElementById(id);
+        button.classList.toggle("active", on);
+        button.setAttribute("aria-pressed", String(on));
+        button.setAttribute("data-taiku-tip", `${name} ${on ? "on" : "off"}`);
+      }
+      document.getElementById("shuffle-btn").onclick = () => {
+        shuffle = !shuffle;
+        sayToggle("shuffle-btn", "Shuffle", shuffle);
+      };
+      document.getElementById("repeat-btn").onclick = () => {
+        repeat = !repeat;
+        sayToggle("repeat-btn", "Repeat", repeat);
+      };
+      document.getElementById("volume").oninput = (e) => {
+        audio.volume = e.target.value / 100;
+      };
+      document.getElementById("mini-vol").oninput = (e) => {
+        audio.volume = e.target.value / 100;
+        document.getElementById("volume").value = e.target.value;
+      };
+      document.getElementById("upload-btn").onclick = () =>
+        document.getElementById("file-input").click();
+      document.getElementById("file-input").onchange = (e) => {
+        for (const f of e.target.files) uploadFile(f);
+        e.target.value = "";
+      };
+      document.getElementById("sync-btn").onclick = () => {
+        syncEnabled = !syncEnabled;
+        document.getElementById("sync-btn").classList.toggle("on", syncEnabled);
+        if (syncEnabled) {
+          broadcastSyncJoin();
+          if (isPlaying) broadcastSyncState("play");
+        } else {
+          broadcastSyncLeave();
+        }
+        renderSyncUsers();
+      };
+      document.getElementById("playlist").addEventListener("click", (e) => {
+        const del = e.target.closest("[data-del]");
+        if (del) {
+          if (!canWrite) return;
+          const idx = Number(del.dataset.del);
+          const t = tracks[idx];
+          if (!t) return;
+          if (t.name) {
+            revokeTrackUrl(t.name);
+            send("storage.deleteFile", { filename: t.name }).then(loadTracks);
+          }
+          return;
+        }
+        const row = e.target.closest("[data-idx]");
+        if (row) playTrack(Number(row.dataset.idx));
+      });
+      document.body.addEventListener("dragover", (e) => e.preventDefault());
+      document.body.addEventListener("drop", (e) => {
+        e.preventDefault();
+        for (const f of e.dataTransfer.files) {
+          if (
+            f.type.startsWith("audio/") ||
+            /\.(mp3|m4a|ogg|wav|flac|aac|webm|opus)$/i.test(f.name)
+          )
+            uploadFile(f);
+        }
+      });
+
+      window.addEventListener("beforeunload", () => {
+        for (const url of objectUrlCache.values()) URL.revokeObjectURL(url);
+        objectUrlCache.clear();
+      });
+
+      // ── Init ──
+      window.addEventListener("message", (e) => {
+        if (e.source !== hostWindow) return;
+        const d = e.data;
+        if (!d) return;
+        if (d.panelId && panelId && d.panelId !== panelId) return;
+        if (d.type === "taiku:init") {
+          // Sandboxed with an opaque origin, the panel inherits no CSS from the
+          // app, so the host sends its design tokens as data instead.
+          for (const [name, value] of Object.entries(d.theme?.tokens || {})) {
+            document.documentElement.style.setProperty(name, value);
+          }
+          pluginId = d.pluginId;
+          sessionId = d.sessionId;
+          panelId = d.panelId;
+          authToken = d.authToken || "";
+          send("subscribeEvents");
+          send("setHeaderButtons", {
+            panelId,
+            buttons: [{ id: "toggle-mini", label: "mini" }],
+          });
+          send("getSession", {}).then((s) => {
+            myName = s?.userName || "you";
+          });
+          send("getUserRole", {}).then((r) => {
+            if (r && r.role === "reader") {
+              canWrite = false;
+              applyReadOnly();
+            }
+          });
+          loadTracks();
+          return;
+        }
+        if (d.type === "taiku:headerButton" && d.buttonId === "toggle-mini") {
+          setMinimized(!minimized);
+          return;
+        }
+        if (d.type === "taiku:event") {
+          const ev = d.event;
+          if (
+            ev.type &&
+            ev.type.startsWith("plugin.taiku.music-player.music.") &&
+            ev.data?.sourcePlugin === "taiku.music-player"
+          ) {
+            const sub = ev.type.replace("plugin.taiku.music-player.music.", "");
+            handleSyncEvent(sub, ev.data);
+          }
+        }
+      });
+
+      setupDropZone();
+
+      // The app's theme changed while this panel was open: the host sends the
+      // whole token set again, to be applied as at init.
+      window.addEventListener("message", (e) => {
+        if (e.source !== window.parent || e.data?.type !== "taiku:theme")
+          return;
+        for (const [name, value] of Object.entries(
+          e.data.theme?.tokens || {},
+        )) {
+          document.documentElement.style.setProperty(name, value);
+        }
+      });
+    </script>
+  </body>
+</html>

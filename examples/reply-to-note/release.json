@@ -1,0 +1,57 @@
+{
+  "format": 1,
+  "manifest": {
+    "id": "example.reply-to-note",
+    "name": "Reply to Note",
+    "version": "0.1.0",
+    "author": "taiku",
+    "description": "Adds Save to notes to More actions under your agents' replies. Choosing it keeps that one reply in its Notes panel, with the agent that wrote it.",
+    "tagline": "Keep an agent's reply in your notes",
+    "license": "MIT",
+    "keywords": [
+      "taiku",
+      "agents",
+      "notes",
+      "example"
+    ],
+    "categories": [
+      "productivity"
+    ],
+    "surfaces": [
+      "web",
+      "phone"
+    ],
+    "permissions": [
+      "agent.actions",
+      "ui.panel",
+      "session.read",
+      "storage.write"
+    ],
+    "panels": [
+      {
+        "id": "notes",
+        "title": "Notes",
+        "position": "sidebar",
+        "htmlUrl": "panel.html"
+      }
+    ],
+    "replyActions": [
+      {
+        "id": "save",
+        "label": "Save to notes",
+        "panelId": "notes"
+      }
+    ],
+    "documentationUrl": "https://docs.taiku.live/docs/plugins-and-developers/building-plugins"
+  },
+  "files": {
+    "README.md": {
+      "sha256": "3d74b0c5724415cacb744fbaf1a548b78097d9112d82fcf9784e9e2b5d008d1f",
+      "type": "application/octet-stream"
+    },
+    "panel.html": {
+      "sha256": "cbe2a52c7254ec6bc9db4b945614b7e08bdc45027dfc4746974d615827c02d52",
+      "type": "text/html"
+    }
+  }
+}

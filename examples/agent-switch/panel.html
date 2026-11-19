@@ -1,0 +1,520 @@
+<!doctype html>
+<html>
+  <head>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: rgb(var(--tk-bg, 10 10 12));
+        color: rgb(var(--tk-ink-secondary, 205 208 214));
+        font-family: var(
+          --tk-ui-font,
+          Helvetica,
+          "Helvetica Neue",
+          "Nimbus Sans",
+          Arial,
+          sans-serif
+        );
+        font-size: 13px;
+        line-height: 20px;
+        padding: 12px;
+        overflow-y: auto;
+        height: 100vh;
+      }
+      label {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        line-height: 20px;
+        color: rgb(var(--tk-ink-muted, 146 146 157));
+        margin: 0 0 4px;
+      }
+      /* Only an error or a refusal above the form moves it, and only while it
+         is there; the first label otherwise sits 12px under the header. */
+      #top:not([hidden]) {
+        margin-bottom: 12px;
+      }
+      #top[hidden] {
+        display: none;
+      }
+      select {
+        display: block;
+        width: 100%;
+        font: inherit;
+        color: rgb(var(--tk-ink, 244 244 245));
+        background: rgb(var(--tk-surface-2, 32 32 37));
+        border: 1px solid rgb(var(--tk-border, 58 58 66));
+        border-radius: 4px;
+        padding: 6px;
+      }
+      /* The actions: 28px painted, 8px on each side. Turning on is the one
+         accent; turning off is a quiet text button. */
+      .act {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      button {
+        height: 28px;
+        padding: 0 8px;
+        line-height: 1;
+        font: inherit;
+        font-weight: 600;
+        color: rgb(var(--tk-ink, 244 244 245));
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      #on {
+        background: rgb(var(--tk-accent, 46 143 255) / 0.2);
+        border: 1px solid rgb(var(--tk-accent, 46 143 255));
+      }
+      #off {
+        background: none;
+        border: 1px solid transparent;
+        color: rgb(var(--tk-ink-secondary, 205 208 214));
+      }
+      @media (hover: hover) {
+        #off:hover:not(:disabled) {
+          background: rgb(var(--tk-surface-2, 32 32 37));
+        }
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      /* One word beside the buttons: Loading, Working, Waiting, Off, On, Not
+         now. The form above does not move for any of them. */
+      #result {
+        font-size: 12px;
+        line-height: 16px;
+        color: rgb(var(--tk-ink-muted, 146 146 157));
+      }
+      #result:empty {
+        display: none;
+      }
+      #status {
+        text-wrap: balance;
+        font-size: 12px;
+        line-height: 16px;
+        color: rgb(var(--tk-ink-secondary, 205 208 214));
+      }
+      #status.bad {
+        color: rgb(var(--tk-danger, 239 68 68));
+      }
+      /* taiku can't tell whose account this plugin uses: said as the rail says
+         a plugin whose read failed, its mark with the failure dot and one
+         line, the host's sentence one step away (the line's tip and
+         description), and the way back one press beside it. */
+      #gone {
+        position: relative;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px 12px;
+      }
+      #gone[hidden],
+      #form[hidden],
+      #tip[hidden] {
+        display: none;
+      }
+      .why {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+      .mark {
+        position: relative;
+        display: inline-flex;
+        flex: none;
+        width: 16px;
+        height: 16px;
+        color: rgb(var(--tk-ink-secondary, 205 208 214));
+      }
+      .mark svg {
+        width: 16px;
+        height: 16px;
+      }
+      /* The app's dot for a failure, on a ring of the panel under it. */
+      .badge {
+        position: absolute;
+        right: -4px;
+        bottom: -4px;
+        display: grid;
+        place-items: center;
+        padding: 1px;
+        border-radius: 9999px;
+        background: rgb(var(--tk-bg, 10 10 12));
+        line-height: 0;
+      }
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 9999px;
+        background: rgb(var(--tk-danger, 239 68 68));
+        outline: 1.5px solid rgb(var(--tk-danger, 239 68 68));
+        outline-offset: 2px;
+      }
+      #why-words {
+        color: rgb(var(--tk-ink-secondary, 205 208 214));
+        border-radius: 2px;
+      }
+      #why-words:focus-visible {
+        outline: 2px solid rgb(var(--tk-accent, 46 143 255));
+        outline-offset: 2px;
+      }
+      /* As taiku draws its own tips, under the line and its action, so it
+         covers nothing that takes a press. */
+      #tip {
+        position: absolute;
+        left: 0;
+        top: calc(100% + 6px);
+        z-index: 1;
+        width: max-content;
+        max-width: min(20rem, calc(100vw - 24px));
+        padding: 4px 8px;
+        border-radius: 6px;
+        border: 1px solid rgb(var(--tk-line, 58 58 66));
+        background: rgb(var(--tk-surface-2, 32 32 37));
+        color: rgb(var(--tk-ink, 244 244 245));
+        font-size: 12px;
+        line-height: 16px;
+        text-wrap: pretty;
+        pointer-events: none;
+      }
+      #settings {
+        background: rgb(var(--tk-accent, 46 143 255) / 0.2);
+        border: 1px solid rgb(var(--tk-accent, 46 143 255));
+      }
+      #settings[hidden],
+      #where[hidden] {
+        display: none;
+      }
+      /* Where it is installed again, for a tab that can't do it here: the
+         words take the action's place. */
+      #where {
+        font-size: 12px;
+        line-height: 16px;
+        color: rgb(var(--tk-ink-muted, 146 146 157));
+      }
+    </style>
+  </head>
+  <body>
+    <div id="top" hidden><p id="status"></p></div>
+    <div id="gone" hidden>
+      <span class="why">
+        <span class="mark" aria-hidden="true"
+          ><svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />
+            <line x1="12" y1="2" x2="12" y2="12" /></svg
+          ><span class="badge"><span class="dot"></span></span
+        ></span>
+        <span id="why-words" tabindex="0"
+          >taiku can't tell whose account this plugin uses</span
+        >
+      </span>
+      <button id="settings">Open in Settings</button>
+      <span id="where" hidden
+        >Install it again from this session's Admin link.</span
+      >
+    </div>
+    <div id="form">
+      <label for="agent">Agent</label>
+      <select id="agent" disabled></select>
+      <div class="act">
+        <button id="off" disabled>Turn off</button>
+        <button id="on" disabled>Ask to turn on</button>
+        <span id="result" role="status">Loading</span>
+      </div>
+    </div>
+    <script>
+      // The host hands this document a port with init. Requests go on it,
+      // and its answers and events come back on it, re-dispatched here as the
+      // host's messages: a port reaches only the document that received it.
+      let taikuPort = null;
+      function taikuPost(msg) {
+        if (taikuPort) taikuPort.postMessage(msg);
+        else window.parent.postMessage(msg, "*");
+      }
+      window.addEventListener("message", (e) => {
+        if (e.source !== window.parent || e.data?.type !== "taiku:init") return;
+        const port = e.ports && e.ports[0];
+        if (!port) return;
+        if (taikuPort) taikuPort.close();
+        taikuPort = port;
+        // Events move to the port from here on, before any request.
+        port.postMessage({ type: "taiku:port-ready" });
+        port.onmessage = (ev) => {
+          if (ev.data?.type === "taiku:init") return;
+          window.dispatchEvent(
+            new MessageEvent("message", {
+              data: ev.data,
+              source: window.parent,
+            }),
+          );
+        };
+      });
+      let pluginId = "",
+        panelId = "",
+        authToken = "",
+        reqId = 0;
+      const hostWindow = window.parent;
+      window.addEventListener("message", (e) => {
+        if (e.source !== hostWindow) return;
+        const d = e.data;
+        if (!d) return;
+        if (d.panelId && panelId && d.panelId !== panelId) return;
+        if (d.type === "taiku:init") {
+          // Sandboxed with an opaque origin, the panel inherits no CSS from the
+          // app, so the host sends its design tokens as data instead.
+          for (const [name, value] of Object.entries(d.theme?.tokens || {})) {
+            document.documentElement.style.setProperty(name, value);
+          }
+          pluginId = d.pluginId;
+          panelId = d.panelId || "";
+          authToken = d.authToken || "";
+          load();
+        }
+      });
+
+      function ask(method, params, waitMs) {
+        return new Promise((resolve, reject) => {
+          const id = "an_" + ++reqId;
+          const handler = (e) => {
+            if (e.source !== hostWindow) return;
+            const d = e.data;
+            if (d?.type === "taiku:response" && d.id === id) {
+              window.removeEventListener("message", handler);
+              if (d.error) reject(new Error(d.error));
+              else resolve(d.result);
+            }
+          };
+          window.addEventListener("message", handler);
+          taikuPost({
+            type: "taiku:request",
+            id,
+            pluginId,
+            panelId,
+            authToken,
+            method,
+            params,
+          });
+          setTimeout(() => {
+            window.removeEventListener("message", handler);
+            reject(new Error("Timeout"));
+          }, waitMs || 10000);
+        });
+      }
+
+      const agentEl = document.getElementById("agent");
+      const offEl = document.getElementById("off");
+      const onEl = document.getElementById("on");
+      const statusEl = document.getElementById("status");
+      const topEl = document.getElementById("top");
+      const resultEl = document.getElementById("result");
+      const goneEl = document.getElementById("gone");
+      const formEl = document.getElementById("form");
+      const whyEl = document.getElementById("why-words");
+      const settingsEl = document.getElementById("settings");
+      // The line's tip, put on the page only with the line.
+      const tipEl = document.createElement("span");
+      tipEl.id = "tip";
+      tipEl.setAttribute("role", "tooltip");
+      tipEl.hidden = true;
+
+      // The session names no installer for this plugin, so taiku can't tell
+      // whose account it would act as. The form waits for one it can: the
+      // line says so, the host's own sentence is its tip and description,
+      // and Settings, where the plugin is installed again, is one press away.
+      const UNNAMED = /^This session doesn't say who installed this plugin/;
+      // The host says where it is installed again: here, where Settings is
+      // one press away, or from the session's Admin link, which this tab
+      // isn't on.
+      const HERE = /\. Uninstall it and install it again to use it as you\.$/;
+      const whereEl = document.getElementById("where");
+      function gone(sentence) {
+        const here = HERE.test(sentence);
+        settingsEl.hidden = !here;
+        whereEl.hidden = here;
+        whyEl.setAttribute("aria-description", sentence);
+        tipEl.textContent = sentence;
+        if (!tipEl.isConnected) goneEl.append(tipEl);
+        formEl.hidden = true;
+        goneEl.hidden = false;
+        say("");
+      }
+
+      // The line's tip: a hover with a mouse, keyboard focus, or a long press
+      // on a phone, as taiku's own tips open.
+      let holdTimer = 0;
+      const showTip = () => (tipEl.hidden = false);
+      const hideTip = () => {
+        clearTimeout(holdTimer);
+        tipEl.hidden = true;
+      };
+      if (matchMedia("(hover: hover)").matches) {
+        whyEl.addEventListener("mouseenter", showTip);
+        whyEl.addEventListener("mouseleave", hideTip);
+      }
+      whyEl.addEventListener("focus", showTip);
+      whyEl.addEventListener("blur", hideTip);
+      whyEl.addEventListener("pointerdown", (e) => {
+        if (e.pointerType === "mouse") return;
+        clearTimeout(holdTimer);
+        holdTimer = setTimeout(showTip, 500);
+      });
+      for (const end of ["pointerup", "pointercancel"]) {
+        whyEl.addEventListener(end, () => clearTimeout(holdTimer));
+      }
+      document.addEventListener("pointerdown", (e) => {
+        if (!whyEl.contains(e.target)) hideTip();
+      });
+
+      settingsEl.addEventListener("click", async () => {
+        try {
+          const opened = await ask("openPluginSettings");
+          if (!opened?.ok) say("Settings can't be opened from here.");
+        } catch (err) {
+          failed("open Settings", err);
+        }
+      });
+
+      // The top line is for what is wrong or refused, and takes no room while
+      // nothing is. What happened is one word beside the buttons.
+      function say(text, bad) {
+        statusEl.textContent = text;
+        statusEl.className = bad ? "bad" : "";
+        topEl.hidden = !text;
+        if (text) resultEl.textContent = "";
+      }
+      function word(text) {
+        resultEl.textContent = text;
+        say("");
+      }
+
+      // What went wrong, in words. The host's and the server's own sentences
+      // are written to be read (an agent made by hand has no switch, one that
+      // reviews pull requests is only turned off by its owner), so they are
+      // shown as they are.
+      function failed(what, err) {
+        const message = String(err && err.message ? err.message : err);
+        if (UNNAMED.test(message)) return gone(message);
+        const refused = /Missing required permission/.test(message);
+        // A sentence the host or the server wrote to be read is a refusal
+        // (an agent with no switch, no session to show the question): said in
+        // plain ink. Only what went wrong is drawn as an error.
+        const broke =
+          refused || /^(Timeout|Failed to fetch|Load failed)/.test(message);
+        say(
+          refused
+            ? "This plugin has not been allowed to " + what + "."
+            : broke
+              ? "Couldn't " + what + "."
+              : /[.!?]$/.test(message)
+                ? message
+                : message + ".",
+          broke,
+        );
+      }
+
+      function busy(on) {
+        offEl.disabled = on;
+        onEl.disabled = on;
+        // The agent is fixed while its request is out, so its word lands
+        // beside it and no other.
+        if (agentEl.options.length) agentEl.disabled = on;
+      }
+
+      async function load() {
+        try {
+          const all = await ask("listAgents");
+          // An agent made by hand has no switch, and the server refuses both
+          // buttons for it, so it is not offered.
+          const agents = all.filter((a) => a.plugin_id);
+          if (!agents.length) {
+            resultEl.textContent = "";
+            say(
+              all.length
+                ? "None of your agents has a switch."
+                : "You have no agents yet.",
+            );
+            return;
+          }
+          // Names are the owner's own text, and go in as text.
+          for (const a of agents) {
+            const o = document.createElement("option");
+            o.value = a.slug;
+            o.textContent = a.display_name;
+            agentEl.append(o);
+          }
+          agentEl.disabled = false;
+          busy(false);
+          word("");
+        } catch (err) {
+          failed("read your agents", err);
+        }
+      }
+
+      // Another agent picked: the last one's word or refusal is not read
+      // beside it.
+      agentEl.addEventListener("change", () => {
+        resultEl.textContent = "";
+        say("");
+      });
+
+      offEl.addEventListener("click", async () => {
+        busy(true);
+        word("Working");
+        try {
+          await ask("turnAgentOff", { slug: agentEl.value });
+          word("Off");
+        } catch (err) {
+          failed("turn it off", err);
+        } finally {
+          busy(false);
+        }
+      });
+
+      onEl.addEventListener("click", async () => {
+        busy(true);
+        word("Waiting");
+        try {
+          // The sheet is the app's, not this panel's: the answer is yours.
+          const answer = await ask(
+            "turnAgentOn",
+            { slug: agentEl.value },
+            10 * 60 * 1000,
+          );
+          word(answer.declined ? "Not now" : "On");
+        } catch (err) {
+          failed("ask to turn it on", err);
+        } finally {
+          busy(false);
+        }
+      });
+
+      // The app's theme changed while this panel was open: the host sends the
+      // whole token set again, to be applied as at init.
+      window.addEventListener("message", (e) => {
+        if (e.source !== window.parent || e.data?.type !== "taiku:theme")
+          return;
+        for (const [name, value] of Object.entries(
+          e.data.theme?.tokens || {},
+        )) {
+          document.documentElement.style.setProperty(name, value);
+        }
+      });
+    </script>
+  </body>
+</html>

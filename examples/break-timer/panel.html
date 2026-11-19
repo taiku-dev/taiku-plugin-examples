@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Break Timer</title>
+    <!--
+      Break Timer, the browser and desktop half. The same manifest.json also
+      declares an "exec" block, which is what the terminal client runs instead
+      (main.py). Both halves make the same calls with the same messages.
+
+      No build step and no SDK import, like the other examples here: it speaks
+      the postMessage protocol directly, so the whole plugin is readable in one
+      file. A real plugin would usually use @taiku/plugin-sdk instead.
+    -->
+    <style>
+      /* Each colour prefers the host's token and falls back to a literal, so the
+         panel matches the app inside taiku and still looks deliberate anywhere
+         else. Tokens are channel triples ("46 143 255"), which is what lets the
+         fallback sit inside the same rgb(). */
+      :root {
+        color-scheme: dark;
+        --bg: rgb(var(--tk-bg, 10 10 12));
+        --text: rgb(var(--tk-ink, 244 244 245));
+        --muted: rgb(var(--tk-ink-muted, 139 139 150));
+        --line: rgb(var(--tk-line, 38 38 43));
+        --accent: rgb(var(--tk-accent, 46 143 255));
+        --surface: rgb(var(--tk-surface-1, 22 22 25));
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 20px 16px;
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--tk-ui-font, ui-sans-serif, system-ui, sans-serif);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      .label {
+        margin: 0 0 6px;
+        color: var(--muted);
+        font-size: 11px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+      .clock {
+        margin: 0;
+        font-size: 44px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: -0.02em;
+      }
+      .cadence {
+        margin: 4px 0 20px;
+        color: var(--muted);
+      }
+      button {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--surface);
+        color: var(--text);
+        font: inherit;
+        cursor: pointer;
+      }
+      button:hover {
+        border-color: var(--accent);
+      }
+      button:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      button:disabled {
+        cursor: default;
+        opacity: 0.5;
+      }
+    </style>
+  </head>
+  <body>
+    <p class="label">Next break in</p>
+    <p class="clock" id="clock">--:--</p>
+    <p class="cadence" id="cadence">Connecting…</p>
+    <button type="button" id="now" disabled>Take a break now</button>
+
+    <script>
+      // The host hands this document a port with init. Requests go on it,
+      // and its answers and events come back on it, re-dispatched here as the
+      // host's messages: a port reaches only the document that received it.
+      let taikuPort = null;
+      function taikuPost(msg) {
+        if (taikuPort) taikuPort.postMessage(msg);
+        else window.parent.postMessage(msg, "*");
+      }
+      window.addEventListener("message", (e) => {
+        if (e.source !== window.parent || e.data?.type !== "taiku:init") return;
+        const port = e.ports && e.ports[0];
+        if (!port) return;
+        if (taikuPort) taikuPort.close();
+        taikuPort = port;
+        // Events move to the port from here on, before any request.
+        port.postMessage({ type: "taiku:port-ready" });
+        port.onmessage = (ev) => {
+          if (ev.data?.type === "taiku:init") return;
+          window.dispatchEvent(
+            new MessageEvent("message", {
+              data: ev.data,
+              source: window.parent,
+            }),
+          );
+        };
+      });
+      const hostWindow = window.parent;
+      const clockEl = document.getElementById("clock");
+      const cadenceEl = document.getElementById("cadence");
+      const nowEl = document.getElementById("now");
+
+      let pluginId = "";
+      let panelId = "";
+      let authToken = "";
+      let nextId = 0;
+      const pending = new Map();
+
+      let minutes = 50;
+      let dueAt = 0;
+
+      function call(method, params) {
+        const id = "bt_" + ++nextId;
+        taikuPost({
+          type: "taiku:request",
+          id,
+          pluginId,
+          panelId,
+          authToken,
+          method,
+          params: params || {},
+        });
+        return new Promise((resolve, reject) =>
+          pending.set(id, { resolve, reject }),
+        );
+      }
+
+      function intervalMinutes(settings) {
+        const n = parseInt((settings || {}).intervalMinutes, 10);
+        return Number.isFinite(n) && n >= 1 ? n : 50;
+      }
+
+      async function restart() {
+        minutes = intervalMinutes(await call("getSettings"));
+        cadenceEl.textContent = "Every " + minutes + " minutes";
+        dueAt = Date.now() + minutes * 60 * 1000;
+        tick();
+      }
+
+      async function remind(body) {
+        await call("sendNotification", { title: "Time for a break", body });
+        await restart();
+      }
+
+      function tick() {
+        const left = Math.max(0, Math.round((dueAt - Date.now()) / 1000));
+        const mm = String(Math.floor(left / 60)).padStart(2, "0");
+        const ss = String(left % 60).padStart(2, "0");
+        clockEl.textContent = mm + ":" + ss;
+        if (left === 0 && dueAt) {
+          dueAt = 0;
+          remind("You have been at it for " + minutes + " minutes.");
+        }
+      }
+
+      const BREAK_NOW = "break-timer.now";
+      const takeBreak = () =>
+        remind("Stepping away now. The timer starts over when you get back.");
+
+      nowEl.addEventListener("click", takeBreak);
+
+      window.addEventListener("message", async (e) => {
+        if (e.source !== hostWindow) return;
+        const d = e.data;
+        if (!d) return;
+        if (d.panelId && panelId && d.panelId !== panelId) return;
+
+        if (d.type === "taiku:init") {
+          pluginId = d.pluginId;
+          panelId = d.panelId || "";
+          authToken = d.authToken || "";
+          // The panel is sandboxed with an opaque origin and inherits no CSS from
+          // the app, so the host sends its design tokens as data instead.
+          for (const [name, value] of Object.entries(d.theme?.tokens || {})) {
+            document.documentElement.style.setProperty(name, value);
+          }
+          await restart();
+          nowEl.disabled = false;
+          await call("showToast", {
+            message: "Reminding you every " + minutes + " minutes",
+            kind: "info",
+          });
+          setInterval(tick, 1000);
+        } else if (d.type === "taiku:response" && pending.has(d.id)) {
+          const { resolve, reject } = pending.get(d.id);
+          pending.delete(d.id);
+          if (d.error) reject(new Error(d.error));
+          else resolve(d.result);
+        } else if (d.type === "taiku:event" && d.event?.type === BREAK_NOW) {
+          // The "Take a break now" setting. It arrives under its bare eventType
+          // here and in the terminal client alike, so main.py matches the same
+          // string.
+          takeBreak();
+        }
+      });
+
+      // The app's theme changed while this panel was open: the host sends the
+      // whole token set again, to be applied as at init.
+      window.addEventListener("message", (e) => {
+        if (e.source !== window.parent || e.data?.type !== "taiku:theme")
+          return;
+        for (const [name, value] of Object.entries(
+          e.data.theme?.tokens || {},
+        )) {
+          document.documentElement.style.setProperty(name, value);
+        }
+      });
+    </script>
+  </body>
+</html>

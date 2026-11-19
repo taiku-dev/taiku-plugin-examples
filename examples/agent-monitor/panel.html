@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
   <head>
     <style>
@@ -8,9 +8,10 @@
         box-sizing: border-box;
       }
       body {
-        background: #18181b;
-        color: #a1a1aa;
-        font-family: system-ui, -apple-system, sans-serif;
+        background: rgb(var(--tk-bg, 10 10 12));
+        color: rgb(var(--tk-ink-secondary, 205 208 214));
+        font-family:
+          Helvetica, "Helvetica Neue", "Nimbus Sans", Arial, sans-serif;
         font-size: 12px;
         padding: 0;
         overflow-y: auto;
@@ -18,11 +19,12 @@
       }
       .summary {
         display: flex;
+        flex-wrap: wrap;
         gap: 0;
         padding: 6px 10px;
         font-size: 11px;
-        border-bottom: 1px solid #27272a;
-        background: #18181b;
+        border-bottom: 1px solid rgb(var(--tk-line, 38 38 43));
+        background: rgb(var(--tk-bg, 10 10 12));
         position: sticky;
         top: 0;
         z-index: 2;
@@ -34,12 +36,18 @@
         padding-right: 12px;
       }
       .summary-item .n {
-        color: #e4e4e7;
+        color: rgb(var(--tk-ink, 244 244 245));
         font-weight: 600;
         font-size: 13px;
       }
       .summary-item .label {
-        color: #52525b;
+        color: rgb(var(--tk-ink-faint, 82 82 91));
+        font-size: 10px;
+      }
+      .summary .note {
+        flex-basis: 100%;
+        margin: 2px 0 0;
+        color: rgb(var(--tk-ink-muted, 146 146 157));
         font-size: 10px;
       }
       .cards {
@@ -53,7 +61,7 @@
         cursor: pointer;
       }
       .agent-row:hover {
-        background: #27272a;
+        background: rgb(var(--tk-surface-2, 32 32 37));
       }
       .dot {
         width: 7px;
@@ -62,23 +70,31 @@
         flex-shrink: 0;
       }
       .dot.running {
-        background: #22c55e;
+        background: rgb(var(--tk-ok, 74 222 128));
       }
       .dot.waiting {
-        background: #eab308;
+        background: rgb(var(--tk-warn, 252 211 77));
       }
       .dot.thinking {
-        background: #38bdf8;
+        background: color-mix(
+          in srgb,
+          #38bdf8 var(--tk-hue-mix, 100%),
+          rgb(var(--tk-ink, 244 244 245))
+        );
       }
       .dot.tool_use {
-        background: #fb923c;
+        background: color-mix(
+          in srgb,
+          #fb923c var(--tk-hue-mix, 100%),
+          rgb(var(--tk-ink, 244 244 245))
+        );
       }
       .dot.idle {
-        background: #60a5fa;
+        background: rgb(var(--tk-accent, 46 143 255));
       }
       .dot.done,
       .dot.stopped {
-        background: #71717a;
+        background: rgb(var(--tk-ink-muted, 139 139 150));
       }
       .agent-info {
         flex: 1;
@@ -88,23 +104,23 @@
         gap: 6px;
       }
       .agent-type {
-        color: #e4e4e7;
+        color: rgb(var(--tk-ink, 244 244 245));
         font-weight: 600;
         font-size: 12px;
         flex-shrink: 0;
       }
       .agent-status {
-        color: #71717a;
+        color: rgb(var(--tk-ink-muted, 139 139 150));
         font-size: 11px;
       }
       .agent-time {
-        color: #52525b;
+        color: rgb(var(--tk-ink-faint, 82 82 91));
         font-size: 10px;
         flex-shrink: 0;
         font-variant-numeric: tabular-nums;
       }
       .agent-cost {
-        color: #4ade80;
+        color: rgb(var(--tk-ok, 74 222 128));
         font-size: 10px;
         font-family: ui-monospace, monospace;
         flex-shrink: 0;
@@ -115,8 +131,8 @@
       #tooltip {
         position: fixed;
         display: none;
-        background: #27272a;
-        border: 1px solid #3f3f46;
+        background: rgb(var(--tk-surface-2, 32 32 37));
+        border: 1px solid rgb(var(--tk-line-strong, 64 64 72));
         border-radius: 6px;
         padding: 8px 10px;
         z-index: 100;
@@ -124,7 +140,7 @@
         max-width: 240px;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
         font-size: 10px;
-        color: #a1a1aa;
+        color: rgb(var(--tk-ink-secondary, 205 208 214));
         pointer-events: none;
       }
       .tt-row {
@@ -134,25 +150,25 @@
         padding: 1px 0;
       }
       .tt-label {
-        color: #52525b;
+        color: rgb(var(--tk-ink-faint, 82 82 91));
       }
       .tt-val {
-        color: #d4d4d8;
+        color: rgb(var(--tk-ink, 244 244 245));
         font-family: ui-monospace, monospace;
       }
       .tt-val.model {
-        color: #60a5fa;
+        color: rgb(var(--tk-accent, 46 143 255));
       }
       .tt-val.cost {
-        color: #4ade80;
+        color: rgb(var(--tk-ok, 74 222 128));
       }
       .tt-sep {
-        border-top: 1px solid #3f3f46;
+        border-top: 1px solid rgb(var(--tk-line-strong, 64 64 72));
         margin: 3px 0;
       }
 
       .empty {
-        color: #52525b;
+        color: rgb(var(--tk-ink-faint, 82 82 91));
         text-align: center;
         padding: 32px 0;
         font-size: 11px;
@@ -170,18 +186,57 @@
         <span class="label">total</span>
       </div>
       <div class="summary-item" id="cost-item" style="display: none">
-        <span class="n" id="total-cost" style="color: #4ade80">$0</span>
+        <span
+          class="n"
+          id="total-cost"
+          style="color: rgb(var(--tk-ok, 74 222 128))"
+          >$0</span
+        >
         <span class="label">session</span>
       </div>
       <div class="summary-item" id="alltime-item" style="display: none">
-        <span class="n" id="alltime-cost" style="color: #22c55e">$0</span>
+        <span
+          class="n"
+          id="alltime-cost"
+          style="color: rgb(var(--tk-ok, 74 222 128))"
+          >$0</span
+        >
         <span class="label">all-time</span>
       </div>
+      <p class="note" id="alltime-note" hidden>
+        All-time is not saved. Reinstall Agent Monitor from Browse to keep it.
+      </p>
     </div>
     <div class="cards" id="cards"></div>
     <p id="empty" class="empty">No agent activity yet</p>
     <div id="tooltip"></div>
     <script>
+      // The host hands this document a port with init. Requests go on it,
+      // and its answers and events come back on it, re-dispatched here as the
+      // host's messages: a port reaches only the document that received it.
+      let taikuPort = null;
+      function taikuPost(msg) {
+        if (taikuPort) taikuPort.postMessage(msg);
+        else window.parent.postMessage(msg, "*");
+      }
+      window.addEventListener("message", (e) => {
+        if (e.source !== window.parent || e.data?.type !== "taiku:init") return;
+        const port = e.ports && e.ports[0];
+        if (!port) return;
+        if (taikuPort) taikuPort.close();
+        taikuPort = port;
+        // Events move to the port from here on, before any request.
+        port.postMessage({ type: "taiku:port-ready" });
+        port.onmessage = (ev) => {
+          if (ev.data?.type === "taiku:init") return;
+          window.dispatchEvent(
+            new MessageEvent("message", {
+              data: ev.data,
+              source: window.parent,
+            }),
+          );
+        };
+      });
       const cardsEl = document.getElementById("cards"),
         empty = document.getElementById("empty");
       const activeCountEl = document.getElementById("active-count");
@@ -191,34 +246,69 @@
       const tooltipEl = document.getElementById("tooltip");
       const alltimeCostEl = document.getElementById("alltime-cost");
       const alltimeItem = document.getElementById("alltime-item");
+      const alltimeNote = document.getElementById("alltime-note");
       const agents = new Map();
       const tooltipData = new Map();
       let pluginId = "",
         panelId = "",
+        authToken = "",
         reqId = 0;
-      let alltimeCost = 0; // cumulative cost across all sessions
-      let lastPersistedCost = 0; // last value saved to user KV
-      let lastSessionCost = 0; // track session cost delta for cumulative update
+      // Only the host may talk to this panel. Plugin panels are child frames of
+      // the same document, and indexed access plus postMessage are on the
+      // cross-origin allowlist, so without this any OTHER installed plugin
+      // could walk `window.parent.frames[i]` and post a forged `taiku:event`
+      // straight in. This panel holds `agent.events`, so a forged event that
+      // lands script here reads the agent stream a different plugin was
+      // granted. Every sibling panel already makes this check.
+      const hostWindow = window.parent;
+      // All-time cost is counted per agent, not from the panel's running
+      // total: every load starts with an empty agent list and then hears each
+      // live agent's cumulative cost again, so a total-delta would add the
+      // same spend on every reload. `counted` remembers, per agent, how much
+      // of its cost is already in `alltimeCost`, and it is saved beside it.
+      // Nothing is counted until the saved value has loaded, or spend heard
+      // first would be counted again against the loaded record.
+      let alltimeCost = 0;
+      let counted = {};
+      let costLoaded = false;
+      let costDirty = false;
+      // An install made before this plugin asked for storage.write keeps the
+      // permissions it had, so its saves are refused. It says so by the total.
+      let costUnsaved = false;
+      // Enough for every agent a person has recently had open; the oldest
+      // entries go first, and their spend is already in the total.
+      const COUNTED_KEEP = 200;
 
       function send(method, params) {
-        if (!pluginId) return Promise.resolve(null);
+        return request(method, params).then((r) => (r.error ? null : r.result));
+      }
+
+      // The answer and the error it carried, or a timeout's.
+      function request(method, params) {
+        if (!pluginId) return Promise.resolve({ error: "not ready" });
         return new Promise((resolve) => {
           const id = "am_" + ++reqId;
-          window.parent.postMessage(
-            { type: "taiku:request", id, pluginId, method, params },
-            "*",
-          );
+          taikuPost({
+            type: "taiku:request",
+            id,
+            pluginId,
+            panelId,
+            authToken,
+            method,
+            params,
+          });
           const handler = (e) => {
+            if (e.source !== hostWindow) return;
             const d = e.data;
             if (d?.type === "taiku:response" && d.id === id) {
               window.removeEventListener("message", handler);
-              resolve(d.error ? null : d.result);
+              resolve({ result: d.result, error: d.error });
             }
           };
           window.addEventListener("message", handler);
           setTimeout(() => {
             window.removeEventListener("message", handler);
-            resolve(null);
+            resolve({ error: "timed out" });
           }, 5000);
         });
       }
@@ -227,19 +317,69 @@
         const val = await send("getUserData", { key: "cumulative_cost" });
         if (val && typeof val === "object" && typeof val.cost === "number") {
           alltimeCost = val.cost;
-          lastPersistedCost = alltimeCost;
+          if (val.counted && typeof val.counted === "object") {
+            counted = { ...val.counted };
+          }
         }
+        costLoaded = true;
+        countNewSpend();
         renderAlltimeCost();
       }
 
-      function persistAlltimeCost() {
-        if (alltimeCost !== lastPersistedCost) {
-          lastPersistedCost = alltimeCost;
-          send("setUserData", {
-            key: "cumulative_cost",
-            value: { cost: alltimeCost, updatedAt: Date.now() },
-          });
+      function countNewSpend() {
+        if (!costLoaded) return;
+        let added = 0;
+        for (const [k, a] of agents) {
+          const cost = a.tokenUsage?.cost;
+          if (!(cost > 0)) continue;
+          // Usage is cumulative per session, so the watermark is too: keyed
+          // by pane, a new session in it counted nothing until it outspent
+          // the last one.
+          const id = a.sessionId || a.instanceId || k;
+          if (
+            typeof counted[id] !== "number" &&
+            a.sessionId &&
+            a.instanceId &&
+            typeof counted[a.instanceId] === "number"
+          ) {
+            // Saved when the watermark was kept per pane: the session live in
+            // the pane now is the one it was counting. Move it over once.
+            counted[id] = counted[a.instanceId];
+            delete counted[a.instanceId];
+            costDirty = true;
+          }
+          const before = typeof counted[id] === "number" ? counted[id] : 0;
+          if (cost > before) {
+            added += cost - before;
+            delete counted[id];
+            counted[id] = cost;
+          }
         }
+        if (added > 0) {
+          alltimeCost += added;
+          costDirty = true;
+          renderAlltimeCost();
+        }
+      }
+
+      function persistAlltimeCost() {
+        if (!costLoaded || !costDirty) return;
+        costDirty = false;
+        const ids = Object.keys(counted);
+        for (const id of ids.slice(0, Math.max(0, ids.length - COUNTED_KEEP))) {
+          delete counted[id];
+        }
+        request("setUserData", {
+          key: "cumulative_cost",
+          value: { cost: alltimeCost, counted, updatedAt: Date.now() },
+        }).then(({ error }) => {
+          const refused =
+            typeof error === "string" && error.includes("storage.write");
+          if (refused !== costUnsaved) {
+            costUnsaved = refused;
+            renderAlltimeCost();
+          }
+        });
       }
 
       function renderAlltimeCost() {
@@ -249,6 +389,7 @@
         } else {
           alltimeItem.style.display = "none";
         }
+        alltimeNote.hidden = !(costUnsaved && alltimeCost > 0);
       }
 
       function fmtTok(n) {
@@ -288,11 +429,16 @@
         );
       }
 
+      // Quotes matter as much as the angle brackets: these values land inside
+      // `data-instance="..."` and `class="dot ..."`, where a bare `"` closes
+      // the attribute and starts an event handler.
       function esc(s) {
-        return String(s)
+        return String(s ?? "")
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;");
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
       }
 
       function buildTooltipHtml(a) {
@@ -314,27 +460,27 @@
           )}</span></div>`;
         }
         if (a.eventCount > 0) {
-          tt += `<div class="tt-row"><span class="tt-label">Events</span><span class="tt-val">${a.eventCount}</span></div>`;
+          tt += `<div class="tt-row"><span class="tt-label">Events</span><span class="tt-val">${esc(a.eventCount)}</span></div>`;
         }
         if (
           a.tokenUsage &&
           (a.tokenUsage.input > 0 || a.tokenUsage.output > 0)
         ) {
           tt += `<div class="tt-sep"></div>`;
-          tt += `<div class="tt-row"><span class="tt-label">Input</span><span class="tt-val">${fmtTok(
-            a.tokenUsage.input,
+          tt += `<div class="tt-row"><span class="tt-label">Input</span><span class="tt-val">${esc(
+            fmtTok(a.tokenUsage.input),
           )}</span></div>`;
-          tt += `<div class="tt-row"><span class="tt-label">Output</span><span class="tt-val">${fmtTok(
-            a.tokenUsage.output,
+          tt += `<div class="tt-row"><span class="tt-label">Output</span><span class="tt-val">${esc(
+            fmtTok(a.tokenUsage.output),
           )}</span></div>`;
           if (a.tokenUsage.cached > 0) {
-            tt += `<div class="tt-row"><span class="tt-label">Cached</span><span class="tt-val">${fmtTok(
-              a.tokenUsage.cached,
+            tt += `<div class="tt-row"><span class="tt-label">Cached</span><span class="tt-val">${esc(
+              fmtTok(a.tokenUsage.cached),
             )}</span></div>`;
           }
           if (a.tokenUsage.cost > 0) {
-            tt += `<div class="tt-row"><span class="tt-label">Cost</span><span class="tt-val cost">${fmtCost(
-              a.tokenUsage.cost,
+            tt += `<div class="tt-row"><span class="tt-label">Cost</span><span class="tt-val cost">${esc(
+              fmtCost(a.tokenUsage.cost),
             )}</span></div>`;
           }
         }
@@ -356,13 +502,7 @@
         } else {
           costItem.style.display = "none";
         }
-        // Update cumulative all-time cost.
-        const delta = sessionCost - lastSessionCost;
-        if (delta > 0) {
-          alltimeCost += delta;
-          renderAlltimeCost();
-        }
-        lastSessionCost = sessionCost;
+        countNewSpend();
 
         send("setBadge", { actionId: "open-agents", count: active.length });
 
@@ -385,14 +525,14 @@
 
           html += `<div class="agent-row" data-key="${esc(k)}" data-shell="${
             a.shell
-          }" data-instance="${a.instanceId || ""}">
-            <span class="dot ${cls}"></span>
+          }" data-instance="${esc(a.instanceId || "")}">
+            <span class="dot ${esc(cls)}"></span>
             <div class="agent-info">
               <span class="agent-type">${esc(a.agent || "unknown")}</span>
               <span class="agent-status">${esc(a.status)}</span>
             </div>
-            ${cost ? `<span class="agent-cost">${cost}</span>` : ""}
-            <span class="agent-time">${fmtTime(a.ts)}</span>
+            ${cost ? `<span class="agent-cost">${esc(cost)}</span>` : ""}
+            <span class="agent-time">${esc(fmtTime(a.ts))}</span>
           </div>`;
         }
         cardsEl.innerHTML = html;
@@ -452,11 +592,19 @@
       });
 
       window.addEventListener("message", (e) => {
+        if (e.source !== hostWindow) return;
         const d = e.data;
         if (!d) return;
         if (d.type === "taiku:init") {
+          // Sandboxed with an opaque origin, the panel inherits no CSS from the
+          // app, so the host sends its design tokens as data instead.
+          for (const [name, value] of Object.entries(d.theme?.tokens || {})) {
+            document.documentElement.style.setProperty(name, value);
+          }
           pluginId = d.pluginId;
-          panelId = d.panelId;
+          panelId = d.panelId || "";
+          // The host refuses a request that does not carry both of these.
+          authToken = d.authToken || "";
           send("subscribeEvents");
           loadAlltimeCost();
           // Persist cumulative cost every 30s.
@@ -478,6 +626,8 @@
             agents.delete(key);
           } else {
             const existing = agents.get(key);
+            // A figure carries over only within the same session.
+            const same = existing && existing.sessionId === (sessionId || null);
             agents.set(key, {
               shell: shellId,
               instanceId: instanceId || null,
@@ -486,8 +636,10 @@
               status: ev.data.status || "running",
               ts: ev.timestamp || Date.now(),
               model: ev.data.model || existing?.model || null,
-              tokenUsage: ev.data.tokenUsage || existing?.tokenUsage || null,
-              eventCount: ev.data.eventCount || existing?.eventCount || 0,
+              tokenUsage:
+                ev.data.tokenUsage || (same ? existing.tokenUsage : null),
+              eventCount:
+                ev.data.eventCount || (same ? existing.eventCount : 0),
             });
           }
         }
@@ -502,6 +654,18 @@
 
       // Persist on unload so last cost delta isn't lost.
       window.addEventListener("beforeunload", persistAlltimeCost);
+
+      // The app's theme changed while this panel was open: the host sends the
+      // whole token set again, to be applied as at init.
+      window.addEventListener("message", (e) => {
+        if (e.source !== window.parent || e.data?.type !== "taiku:theme")
+          return;
+        for (const [name, value] of Object.entries(
+          e.data.theme?.tokens || {},
+        )) {
+          document.documentElement.style.setProperty(name, value);
+        }
+      });
     </script>
   </body>
 </html>

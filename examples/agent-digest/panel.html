@@ -1,0 +1,551 @@
+<!doctype html>
+<html>
+  <head>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: rgb(var(--tk-bg, 10 10 12));
+        color: rgb(var(--tk-ink-secondary, 205 208 214));
+        font-family: var(
+          --tk-ui-font,
+          Helvetica,
+          "Helvetica Neue",
+          "Nimbus Sans",
+          Arial,
+          sans-serif
+        );
+        font-size: 13px;
+        line-height: 20px;
+        padding-bottom: 12px;
+        overflow-y: auto;
+        height: 100vh;
+      }
+      /* One 12px edge for the labels and the rows; 8px from a label to its
+         rows and 16px between agents. */
+      h2 {
+        font-size: 13px;
+        font-weight: 600;
+        line-height: 20px;
+        color: rgb(var(--tk-ink-muted, 146 146 157));
+        padding: 4px 12px 0;
+        height: 28px;
+        margin: 16px 0 8px;
+      }
+      h2:first-child {
+        margin-top: 0;
+      }
+      /* A 36px row: a 20px mark, the words, then how it ended. */
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        height: 36px;
+        padding: 0 12px;
+      }
+      .mark {
+        flex: none;
+        width: 20px;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: rgb(var(--tk-ink-muted, 146 146 157));
+      }
+      .mark.bad {
+        color: rgb(var(--tk-danger, 239 68 68));
+      }
+      /* A run that is still going: a ring in the accent, not the quiet dot of
+         one that finished. */
+      .ring {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        border: 2px solid rgb(var(--tk-accent, 46 143 255));
+      }
+      /* A mark that has a word: it is drawn here, not a native title, so it
+         opens on hover, on focus and on a tap. */
+      .mark[role="img"] {
+        position: relative;
+        cursor: default;
+        outline: none;
+      }
+      .mark[role="img"]:focus-visible {
+        outline: 2px solid rgb(var(--tk-accent, 46 143 255));
+        outline-offset: 1px;
+        border-radius: 4px;
+      }
+      .tip {
+        display: none;
+        position: absolute;
+        top: calc(100% + 2px);
+        left: 0;
+        z-index: 2;
+        padding: 2px 8px;
+        border-radius: 4px;
+        border: 1px solid rgb(var(--tk-line, 64 64 72));
+        background: rgb(var(--tk-surface-2, 32 32 37));
+        color: rgb(var(--tk-ink, 244 244 245));
+        font-size: 12px;
+        line-height: 16px;
+        white-space: nowrap;
+        pointer-events: none;
+      }
+      .mark[role="img"]:hover .tip,
+      .mark[role="img"]:focus .tip,
+      .mark.open .tip {
+        display: block;
+      }
+      .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: currentColor;
+      }
+      /* A run its owner stopped: a quiet square, not the dot of one that went
+         fine and not the red of one that failed. */
+      .stop {
+        width: 6px;
+        height: 6px;
+        border-radius: 1px;
+        background: currentColor;
+      }
+      .what {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: rgb(var(--tk-ink, 244 244 245));
+      }
+      .state {
+        flex: none;
+        font-size: 12px;
+        line-height: 16px;
+        color: rgb(var(--tk-ink-muted, 146 146 157));
+      }
+      .state.bad {
+        color: rgb(var(--tk-danger, 239 68 68));
+      }
+      .empty {
+        color: rgb(var(--tk-ink-muted, 146 146 157));
+        padding: 8px 12px;
+        font-size: 12px;
+        line-height: 16px;
+      }
+      details {
+        padding: 0 12px;
+        font-size: 12px;
+        line-height: 16px;
+        color: rgb(var(--tk-ink-muted, 146 146 157));
+      }
+      summary {
+        cursor: pointer;
+      }
+      pre {
+        margin-top: 4px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: inherit;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"><p class="empty" id="status">Loading...</p></div>
+    <script>
+      // The host hands this document a port with init. Requests go on it,
+      // and its answers and events come back on it, re-dispatched here as the
+      // host's messages: a port reaches only the document that received it.
+      let taikuPort = null;
+      function taikuPost(msg) {
+        if (taikuPort) taikuPort.postMessage(msg);
+        else window.parent.postMessage(msg, "*");
+      }
+      window.addEventListener("message", (e) => {
+        if (e.source !== window.parent || e.data?.type !== "taiku:init") return;
+        const port = e.ports && e.ports[0];
+        if (!port) return;
+        if (taikuPort) taikuPort.close();
+        taikuPort = port;
+        // Events move to the port from here on, before any request.
+        port.postMessage({ type: "taiku:port-ready" });
+        port.onmessage = (ev) => {
+          if (ev.data?.type === "taiku:init") return;
+          window.dispatchEvent(
+            new MessageEvent("message", {
+              data: ev.data,
+              source: window.parent,
+            }),
+          );
+        };
+      });
+      let pluginId = "",
+        panelId = "",
+        authToken = "",
+        reqId = 0;
+      const hostWindow = window.parent;
+      window.addEventListener("message", (e) => {
+        if (e.source !== hostWindow) return;
+        const d = e.data;
+        if (!d) return;
+        if (d.panelId && panelId && d.panelId !== panelId) return;
+        if (d.type === "taiku:init") {
+          // Sandboxed with an opaque origin, the panel inherits no CSS from the
+          // app, so the host sends its design tokens as data instead.
+          for (const [name, value] of Object.entries(d.theme?.tokens || {})) {
+            document.documentElement.style.setProperty(name, value);
+          }
+          pluginId = d.pluginId;
+          panelId = d.panelId || "";
+          authToken = d.authToken || "";
+          load();
+        }
+      });
+
+      function ask(method, params) {
+        return new Promise((resolve, reject) => {
+          const id = "ad_" + ++reqId;
+          const handler = (e) => {
+            if (e.source !== hostWindow) return;
+            const d = e.data;
+            if (d?.type === "taiku:response" && d.id === id) {
+              window.removeEventListener("message", handler);
+              if (d.error) reject(new Error(d.error));
+              else resolve(d.result);
+            }
+          };
+          window.addEventListener("message", handler);
+          taikuPost({
+            type: "taiku:request",
+            id,
+            pluginId,
+            panelId,
+            authToken,
+            method,
+            params,
+          });
+          setTimeout(() => {
+            window.removeEventListener("message", handler);
+            reject(new Error("Timeout"));
+          }, 10000);
+        });
+      }
+
+      const DAY = 24 * 60 * 60 * 1000;
+
+      // The product's words, not the server's: a verdict as the Sentinel's
+      // reviews list says it, a run's trigger as a person would.
+      const VERDICTS = {
+        ok: "ok",
+        "ok-with-notes": "ok with notes",
+        block: "blocked",
+      };
+      const STARTED = {
+        cron: "Scheduled run",
+        event: "Run on an event",
+        manual: "Run you started",
+        api: "Run from the API",
+        resume: "Resumed run",
+      };
+      const SVG = "http://www.w3.org/2000/svg";
+
+      // A red circle with a cross, 16px, for a run that failed.
+      function failedMark() {
+        const svg = document.createElementNS(SVG, "svg");
+        svg.setAttribute("viewBox", "0 0 24 24");
+        svg.setAttribute("width", "16");
+        svg.setAttribute("height", "16");
+        svg.setAttribute("fill", "none");
+        svg.setAttribute("stroke", "currentColor");
+        svg.setAttribute("stroke-width", "2");
+        svg.setAttribute("stroke-linecap", "round");
+        svg.setAttribute("stroke-linejoin", "round");
+        svg.setAttribute("aria-hidden", "true");
+        for (const d of [
+          "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z",
+          "M15 9l-6 6",
+          "M9 9l6 6",
+        ]) {
+          const path = document.createElementNS(SVG, "path");
+          path.setAttribute("d", d);
+          svg.append(path);
+        }
+        return svg;
+      }
+
+      // A run's error line is text other parties can shape (a page, a pull
+      // request), and goes in as text: never as markup. What an agent
+      // answered is not read at all: agents.read does not carry it.
+      //
+      // `mark` is what the row's state is: nothing for a verdict, a dot for a
+      // run that went fine, a red mark for one that failed and a quiet square
+      // for one that was stopped (each with its word in the tip and for a
+      // screen reader), `state` the word a verdict ends in.
+      function row(parent, what, { key, mark, state, bad, word }) {
+        const el = document.createElement("div");
+        el.className = "row";
+        // What a re-read finds the same row by, so it can keep a focused mark
+        // and an open tip where they are.
+        if (key) el.dataset.key = key;
+        const m = document.createElement("span");
+        m.className = "mark" + (bad ? " bad" : "");
+        if (mark === "dot") {
+          const d = document.createElement("span");
+          d.className = "dot";
+          m.append(d);
+        } else if (
+          mark === "failed" ||
+          mark === "running" ||
+          mark === "stopped"
+        ) {
+          if (mark === "failed") {
+            m.append(failedMark());
+          } else if (mark === "stopped") {
+            const q = document.createElement("span");
+            q.className = "stop";
+            m.append(q);
+          } else {
+            const r = document.createElement("span");
+            r.className = "ring";
+            m.append(r);
+          }
+          m.setAttribute("role", "img");
+          m.setAttribute("aria-label", word);
+          m.tabIndex = 0;
+          const tip = document.createElement("span");
+          tip.className = "tip";
+          tip.setAttribute("aria-hidden", "true");
+          tip.textContent = word;
+          m.append(tip);
+          // A tap opens it; a tap anywhere else closes it.
+          m.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const was = m.classList.contains("open");
+            closeTips();
+            if (!was) m.classList.add("open");
+          });
+        }
+        const w = document.createElement("span");
+        w.className = "what";
+        w.textContent = what;
+        // A line the row cuts short is still read whole.
+        w.title = what;
+        el.append(m, w);
+        if (state) {
+          const s = document.createElement("span");
+          s.className = "state" + (bad ? " bad" : "");
+          s.textContent = state;
+          el.append(s);
+        }
+        parent.append(el);
+      }
+
+      function closeTips() {
+        for (const open of document.querySelectorAll(".mark.open"))
+          open.classList.remove("open");
+      }
+      document.addEventListener("click", closeTips);
+
+      function runLine(r) {
+        if (r.error) return r.error;
+        const calls = (r.tool_calls || []).length;
+        let line =
+          (STARTED[r.trigger] || "Run") +
+          ", " +
+          calls +
+          (calls === 1 ? " tool call" : " tool calls");
+        if (r.ended_at) {
+          const secs = Math.max(
+            0,
+            Math.round(
+              (Date.parse(r.ended_at) - Date.parse(r.started_at)) / 1000,
+            ),
+          );
+          // Seconds under a minute, then minutes: "42s", "2m".
+          line += ", " + (secs < 60 ? secs + "s" : Math.round(secs / 60) + "m");
+        }
+        return line;
+      }
+
+      function runMark(r) {
+        const key = "run-" + r.id;
+        if (r.status === "error")
+          return { key, mark: "failed", bad: true, word: "Failed" };
+        if (r.status === "timeout")
+          return { key, mark: "failed", bad: true, word: "Timed out" };
+        // Waiting to start is going, as the app counts it (`runIsWorking`).
+        if (r.status === "running" || r.status === "pending")
+          return { key, mark: "running", word: "Running" };
+        if (r.status === "cancelled")
+          return { key, mark: "stopped", word: "Stopped" };
+        return { key, mark: "dot" };
+      }
+
+      function section(root, title) {
+        const h = document.createElement("h2");
+        h.textContent = title;
+        root.append(h);
+      }
+
+      function note(root, text) {
+        const p = document.createElement("p");
+        p.className = "empty";
+        p.textContent = text;
+        root.append(p);
+      }
+
+      // What went wrong, in words; the host's own sentence stays behind a
+      // Details for whoever is fixing it.
+      function failed(root, err) {
+        root.replaceChildren();
+        const missing = /Missing required permission/.test(err.message);
+        note(
+          root,
+          missing
+            ? "This plugin has not been allowed to read your agents."
+            : "Couldn't read your agents.",
+        );
+        const d = document.createElement("details");
+        const s = document.createElement("summary");
+        s.textContent = "Details";
+        const pre = document.createElement("pre");
+        pre.textContent = err.message;
+        d.append(s, pre);
+        root.append(d);
+      }
+
+      // The records are read when the panel loads, again every few seconds
+      // while any run is still going (so a run that finished stops showing a
+      // ring), and again when a pointer comes back to the panel after a while:
+      // the session mounts it at page load and a person opens it much later.
+      const POLL_MS = 4000;
+      const STALE_MS = 5000;
+      let reading = false;
+      let drawn = "";
+      let readAt = 0;
+      let timer = 0;
+
+      async function load() {
+        if (reading) return;
+        reading = true;
+        clearTimeout(timer);
+        const root = document.getElementById("root");
+        const since = Date.now() - DAY;
+        let going = false;
+        try {
+          const agents = await ask("listAgents");
+          // Built aside and swapped in whole, so a re-read never flashes empty.
+          const next = document.createDocumentFragment();
+          // What would be drawn, as data: a read that finds the same thing
+          // changes nothing on screen, so a focused mark and an open tip stay.
+          const seen = [];
+          if (!agents.length) {
+            note(next, "You have no agents yet.");
+          }
+          for (const agent of agents) {
+            section(next, agent.display_name);
+            const [runs, verdicts] = await Promise.all([
+              ask("getAgentRuns", { slug: agent.slug, limit: 20 }),
+              ask("getAgentVerdicts", { slug: agent.slug, limit: 20 }),
+            ]);
+            const recentRuns = runs.filter(
+              (r) => Date.parse(r.started_at) >= since,
+            );
+            const recentVerdicts = verdicts.filter(
+              (v) => Date.parse(v.created_at) >= since,
+            );
+            if (
+              recentRuns.some(
+                (r) => r.status === "running" || r.status === "pending",
+              )
+            )
+              going = true;
+            seen.push([
+              agent.display_name,
+              recentRuns.map((r) => [
+                r.id,
+                r.status,
+                r.error,
+                r.trigger,
+                (r.tool_calls || []).length,
+                r.ended_at,
+              ]),
+              recentVerdicts.map((v) => [
+                v.id,
+                v.verdict,
+                v.full_name,
+                v.pr_number,
+              ]),
+            ]);
+            for (const r of recentRuns) row(next, runLine(r), runMark(r));
+            for (const v of recentVerdicts) {
+              row(next, v.full_name + " #" + v.pr_number, {
+                key: "verdict-" + v.id,
+                state: VERDICTS[v.verdict] || "reviewed",
+                bad: v.verdict === "block",
+              });
+            }
+            if (!recentRuns.length && !recentVerdicts.length) {
+              note(next, "Nothing in the last day.");
+            }
+          }
+          const now = JSON.stringify(seen);
+          if (now !== drawn) {
+            // A mark with focus, and a tip a tap opened, are found again by
+            // their row's key in what replaces them.
+            const at = document.activeElement;
+            const focusKey =
+              at && at.classList && at.classList.contains("mark")
+                ? at.closest("[data-key]")?.dataset.key
+                : null;
+            const openKey = root
+              .querySelector(".mark.open")
+              ?.closest("[data-key]")?.dataset.key;
+            root.replaceChildren(next);
+            const mark = (key) =>
+              root.querySelector(
+                '[data-key="' + CSS.escape(key) + '"] .mark[role="img"]',
+              );
+            if (focusKey) mark(focusKey)?.focus();
+            if (openKey) mark(openKey)?.classList.add("open");
+            drawn = now;
+          }
+        } catch (err) {
+          // The error is what is drawn now, and the same one found again is
+          // left alone: an open Details and a focus in it stay.
+          const now = "error: " + err.message;
+          if (now !== drawn) {
+            failed(root, err);
+            drawn = now;
+          }
+        } finally {
+          reading = false;
+          readAt = Date.now();
+          if (going) timer = setTimeout(load, POLL_MS);
+        }
+      }
+
+      // A pointer or focus back on the panel after a while: read again.
+      function comeBack() {
+        if (pluginId && Date.now() - readAt > STALE_MS) load();
+      }
+      document.addEventListener("mouseover", comeBack);
+      window.addEventListener("focus", comeBack);
+
+      // The app's theme changed while this panel was open: the host sends the
+      // whole token set again, to be applied as at init.
+      window.addEventListener("message", (e) => {
+        if (e.source !== window.parent || e.data?.type !== "taiku:theme")
+          return;
+        for (const [name, value] of Object.entries(
+          e.data.theme?.tokens || {},
+        )) {
+          document.documentElement.style.setProperty(name, value);
+        }
+      });
+    </script>
+  </body>
+</html>

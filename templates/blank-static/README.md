@@ -1,14 +1,20 @@
-# Blank Static Template
+# Blank Static
 
-Minimal taiku plugin starter with one sidebar panel and a working host-bridge
-example.
+A static plugin with no build step or package dependencies.
 
-What it demonstrates:
+Edit `id`, `name`, and `author` in `manifest.json` before making your own plugin.
+Serve this folder from an HTTP(S) server that allows cross-origin requests.
+In taiku, open Plugins, choose Submit, and load the full URL to
+`manifest.json` or to its folder. Review the permissions and confirm the install.
+A path on your computer or a `file://` URL does not work in the web app.
 
-- a single `manifest.json` plus `panel.html`
-- waiting for `taiku:init`
-- sending `taiku:request` messages with a request ID
-- handling `taiku:response` results and errors
+The panel waits for `taiku:init` and sends `getSession` with the supplied
+`pluginId`, `panelId`, and `authToken`. It uses the supplied MessagePort when
+available, acknowledges it with `taiku:port-ready`, and applies the host's theme.
 
-Use this when you want the smallest possible plugin that still follows the same
-postMessage pattern as the shipped static examples.
+Permissions:
+
+- `session.read`: read the session shown in the panel.
+- `ui.panel`: display the sidebar panel.
+
+See the [plugin guide](https://docs.taiku.live/docs/plugins-and-developers/building-plugins).
